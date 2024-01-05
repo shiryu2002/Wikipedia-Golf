@@ -28,8 +28,8 @@ export default function Home() {
 
   return (
     <main>
-      <div>
-        <p className="text-center text-3xl my-6 ">
+      <div className="sticky top-0 z-10 bg-black ">
+        <p className="text-center text-3xl py-4">
           打数:<span className="text-5xl font-bold"> {stroke}</span>
         </p>
       </div>
