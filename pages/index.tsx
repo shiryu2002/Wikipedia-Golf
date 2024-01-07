@@ -21,7 +21,10 @@ export default function Home() {
     console.log(goalArticle);
   };
   const GoalModal = () => (
-    <div style={{ display: isModalOpen ? "block" : "none" }} className="w-2/5">
+    <div
+      style={{ display: isModalOpen ? "block" : "none" }}
+      className="w-full bg-white p-4"
+    >
       <div>
         {/* モーダルのコンテンツ */}
 
@@ -31,7 +34,7 @@ export default function Home() {
         <div
           dangerouslySetInnerHTML={{ __html: goalArticle }}
           id="articleContent2"
-          className="flex-grow p-4 flex flex-col"
+          className="w-full"
         ></div>
         <button onClick={modalControl}>閉じる</button>
       </div>
@@ -179,7 +182,8 @@ export default function Home() {
             <h1>おめでとうございます！ゴールに到達しました！</h1>
             <p>打数: {stroke}</p>
             <TwitterShareButton
-              url={location.href}
+              // url={location.href}
+              url="https://wikipedia-golf.vercel.app/"
               title={`Wikipedia Golfで${history[0].title}から${stroke}打で${goal}に到達しました！`}
               hashtags={["WikipediaGolf"]}
             >
@@ -190,7 +194,8 @@ export default function Home() {
       </div>
       <div className="bg-gray-100 text-black mr-96 flex flex-row justify-start items-start">
         {/* 履歴セクション */}
-        <div className="history flex-none w-1/4 p-4 bg-white border-r-2 border-white rounded-2xl mt-10 sticky top-20">
+        {/* fix this スクロールできない */}
+        <div className="history flex-none w-1/4 h-4/5 p-4 bg-white border-r-2 border-white rounded-2xl mt-10 sticky top-20 overflow-y-scroll">
           {goal !== "" && stroke > -1 ? (
             <div>
               <h2>ゴール</h2>
