@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { XIcon, TwitterShareButton } from "react-share";
 
 export default function Home() {
   const [title, setTitle] = useState("メインページ");
@@ -11,6 +12,9 @@ export default function Home() {
   const [isStart, setIsStart] = useState(false);
   const [goalArticle, setGoalArticle] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [gameState, setGameState] = useState<"start" | "playing" | "gameover">(
+    "start"
+  );
 
   const modalControl = () => {
     setIsModalOpen(!isModalOpen);
@@ -33,7 +37,6 @@ export default function Home() {
       </div>
     </div>
   );
-
   const pickStart = async () => {
     try {
       const response = await fetch(
@@ -42,7 +45,7 @@ export default function Home() {
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
       setTitle(randomTitle);
-      setIsStart(true);
+      setGameState("playing");
     } catch (error) {
       console.error("スタートページの取得に失敗しました", error);
     }
@@ -77,6 +80,12 @@ export default function Home() {
     // setGoal(randomTitle);
   };
 
+  const checkIfGameOver = (title: string) => {
+    if (title === goal) {
+      setGameState("gameover");
+    }
+  };
+
   useEffect(() => {
     fetchTitle(title);
   }, [title]);
@@ -100,13 +109,14 @@ export default function Home() {
       const response = await fetch(url);
       const data = await response.json();
       setContent(data.parse.text["*"]);
-      if (title !== "メインページ" && isStart) {
+      if (title !== "メインページ" && gameState === "playing") {
         setStroke(stroke + 1);
         setHistory((prev) => [
           ...prev,
           { title: title, url: url, stroke: stroke + 1 },
         ]);
       }
+      checkIfGameOver(title);
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
     }
@@ -128,7 +138,7 @@ export default function Home() {
   };
 
   const start = async () => {
-    setIsStart(false);
+    setGameState("start");
     await getGoal();
     setHistory([]);
     await pickStart();
@@ -152,7 +162,6 @@ export default function Home() {
         >
           スタート
         </button>
-
         {/* <button
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-6 rounded"
           onClick={pickRandom}
@@ -165,6 +174,19 @@ export default function Home() {
         >
           戻る
         </button> */}
+        {gameState === "gameover" && (
+          <div className="game-over bg-gray-900">
+            <h1>おめでとうございます！ゴールに到達しました！</h1>
+            <p>打数: {stroke}</p>
+            <TwitterShareButton
+              url={location.href}
+              title={`Wikipedia Golfで${history[0].title}から${stroke}打で${goal}に到達しました！`}
+              hashtags={["WikipediaGolf"]}
+            >
+              <XIcon size={32} round={true} />
+            </TwitterShareButton>
+          </div>
+        )}
       </div>
       <div className="bg-gray-100 text-black mr-96 flex flex-row justify-start items-start">
         {/* 履歴セクション */}
