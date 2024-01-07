@@ -14,13 +14,15 @@ export default function Home() {
         setStroke((prevStroke) => prevStroke + 1);
         let currentUrl;
         try {
-          currentUrl = iframe.contentWindow.location.href;
+          if (iframe && iframe.contentWindow) {
+            currentUrl = iframe.contentWindow.location.href;
+          }
         } catch (e) {
           console.error("URLの取得に失敗しました。", e);
           return;
         }
         const newHistoryItem = { url: currentUrl, stroke: stroke + 1 };
-        setHistory([...history, newHistoryItem]);
+        setHistory([...history, { url: currentUrl || "", stroke: stroke + 1 }]);
       };
       iframe.addEventListener("load", handleLoad);
 
