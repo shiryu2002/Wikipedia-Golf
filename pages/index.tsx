@@ -9,7 +9,9 @@ export default function Home() {
   >([]);
   const [stroke, setStroke] = useState(-1);
   const [goal, setGoal] = useState<string>("");
-  const [isStart, setIsStart] = useState(false);
+  const [gameState, setGameState] = useState<"start" | "playing" | "gameover">(
+    "start"
+  );
 
   const pickStart = async () => {
     try {
@@ -19,7 +21,7 @@ export default function Home() {
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
       setTitle(randomTitle);
-      setIsStart(true);
+      setGameState("playing");
     } catch (error) {
       console.error("ランダムなページの取得に失敗しました", error);
     }
@@ -33,6 +35,12 @@ export default function Home() {
     const randomTitle = data.query.random[0].title;
     console.log("goal", randomTitle);
     setGoal(randomTitle);
+  };
+
+  const checkIfGameOver = (title: string) => {
+    if (title === goal) {
+      setGameState("gameover");
+    }
   };
 
   useEffect(() => {
@@ -58,13 +66,14 @@ export default function Home() {
       const response = await fetch(url);
       const data = await response.json();
       setContent(data.parse.text["*"]);
-      if (title !== "メインページ" && isStart) {
+      if (title !== "メインページ" && gameState === "playing") {
         setStroke(stroke + 1);
         setHistory((prev) => [
           ...prev,
           { title: title, url: url, stroke: stroke + 1 },
         ]);
       }
+      checkIfGameOver(title);
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
     }
@@ -86,7 +95,7 @@ export default function Home() {
   };
 
   const start = async () => {
-    setIsStart(false);
+    setGameState("start");
     await getGoal();
     setHistory([]);
     await pickStart();
@@ -110,7 +119,6 @@ export default function Home() {
         >
           スタート
         </button>
-
         {/* <button
           className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-6 rounded"
           onClick={pickRandom}
@@ -123,6 +131,13 @@ export default function Home() {
         >
           戻る
         </button> */}
+        {gameState === "gameover" && (
+          <div className="game-over">
+            <h1>おめでとうございます！ゴールに到達しました！</h1>
+            <p>打数: {stroke}</p>
+            <button onClick={start}>もう一度プレイ</button>
+          </div>
+        )}
       </div>
       <div className="bg-gray-100 text-black mr-96 flex flex-row justify-start items-start">
         {/* 履歴セクション */}
