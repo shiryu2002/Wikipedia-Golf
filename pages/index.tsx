@@ -2,7 +2,7 @@ import { get } from "http";
 import React, { useState, useEffect } from "react";
 
 export default function Home() {
-  const [article, setArticle] = useState("メインページ");
+  const [title, setTitle] = useState("メインページ");
   const [content, setContent] = useState("");
   const [history, setHistory] = useState<
     { title: string; url: string; stroke: number }[]
@@ -18,7 +18,7 @@ export default function Home() {
       );
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
-      setArticle(randomTitle);
+      setTitle(randomTitle);
       setIsStart(true);
     } catch (error) {
       console.error("ランダムなページの取得に失敗しました", error);
@@ -36,8 +36,8 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchArticle(article);
-  }, [article]);
+    fetchTitle(title);
+  }, [title]);
 
   useEffect(() => {
     const links = document.querySelectorAll("#articleContent a");
@@ -52,7 +52,7 @@ export default function Home() {
     };
   }, [content]);
 
-  const fetchArticle = async (title: string) => {
+  const fetchTitle = async (title: string) => {
     const url = `https://ja.wikipedia.org/w/api.php?action=parse&page=${title}&format=json&origin=*`;
     try {
       const response = await fetch(url);
@@ -74,13 +74,13 @@ export default function Home() {
     event.preventDefault();
     const title = event.target.getAttribute("title");
     if (title) {
-      setArticle(title);
+      setTitle(title);
     }
   };
 
   const handleBackClick = () => {
     if (history[history.length - 1].title)
-      setArticle(history[history.length - 1].title);
+      setTitle(history[history.length - 1].title);
     setHistory(history.slice(0, history.length - 1));
     setStroke(stroke - 1);
   };
