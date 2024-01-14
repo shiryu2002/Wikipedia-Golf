@@ -48,13 +48,11 @@ export default function Home() {
 
         {/* 記事内のリンクを無効化してくれ */}
 
-        <h2>ゴール</h2>
         <div
           dangerouslySetInnerHTML={{ __html: goalArticle }}
           id="articleContent2"
           className="w-full"
         ></div>
-        <button onClick={modalControl}>閉じる</button>
       </div>
     </div>
   );
@@ -131,6 +129,8 @@ export default function Home() {
       console.error("記事の取得に失敗しました", error);
     } finally {
       setIsLoading(false); // ローディング終了
+      //一番上にスクロール
+      window.scrollTo(0, 0);
     }
   };
 
@@ -193,10 +193,19 @@ export default function Home() {
         {/* fix this スクロールできない */}
         <div className="history flex-none w-1/4 h-4/5 p-4 bg-white border-r-2 border-white rounded-2xl mt-10 sticky top-20 overflow-y-scroll">
           {goal !== "" && stroke > -1 ? (
-            <div>
-              <h2>ゴール</h2>
-              <button onClick={modalControl} className="text-red-600 text-3xl">
-                {goal}
+            <div className="text-center">
+              <p className="text-xl">
+                ↓をクリックすると
+                <br />
+                記事を開閉できます
+              </p>
+              <button onClick={modalControl} className="text-black text-xl">
+                <p className="">
+                  ゴール:
+                  <span className="text-red-600 text-3xl hover:underline">
+                    {goal}
+                  </span>
+                </p>
               </button>
             </div>
           ) : (
@@ -231,7 +240,11 @@ export default function Home() {
         {/* コンテンツセクション */}
         <GoalModal />
         {isLoading ? (
-          <div className="flex justify-center items-center h-screen w-screen">
+          <div
+            className={`flex justify-center items-center h-screen w-screen  ${
+              isModalOpen ? "w-2/5" : "w-4/5"
+            }`}
+          >
             <CircularProgress />
           </div>
         ) : (
@@ -239,7 +252,7 @@ export default function Home() {
             id="articleContent"
             dangerouslySetInnerHTML={{ __html: content }}
             className={`flex-grow p-4 flex flex-col ${
-              isModalOpen ? "w-2/5" : "w-4/5"
+              isModalOpen ? (isLoading ? "hidden" : "w-2/5") : "w-4/5"
             }`}
           />
         )}
