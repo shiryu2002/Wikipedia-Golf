@@ -42,10 +42,7 @@ export default function Home() {
     console.log(goalArticle);
   };
   const GoalModal = () => (
-    <div
-      style={{ display: isModalOpen ? "block" : "none" }}
-      className="w-full bg-white p-4"
-    >
+    <div className={`${isModalOpen ? "w-2/5" : "hidden"} bg-white p-4`}>
       <div>
         {/* モーダルのコンテンツ */}
 
@@ -242,7 +239,9 @@ export default function Home() {
         <div
           dangerouslySetInnerHTML={{ __html: content }}
           id="articleContent"
-          className="flex-grow p-4 flex flex-col"
+          className={`${
+            isModalOpen ? "w-2/5" : "w-4/5"
+          } flex-grow p-4 flex flex-col`}
         ></div>
       </div>
     </div>
