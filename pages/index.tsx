@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { XIcon, TwitterShareButton } from "react-share";
+
 import CircularProgress from "@mui/material/CircularProgress";
 import countReferer from "@/useCase/referer";
-import { count } from "console";
+import { HintsModal } from "@/components/Hints";
+import { ShareModal } from "@/components/Share";
 
 export default function Home() {
   const [title, setTitle] = useState<string>("メインページ"); //英語版は"Main Page"
@@ -21,38 +22,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [numOfReferer, setNumOfReferer] = useState<number>(0);
   const [hints, setHints] = useState([]);
-  const [hintModal, setHintModal] = useState<boolean>(false);
-
-  const Hints = () => {
-    return (
-      <div className="bg-gray-900 text-white p-4 rounded-xl my-6">
-        <div className="text-center text-3xl">ゴールのリンク元一覧</div>
-        {hints.map((hint, index) => (
-          <div key={index}>･{hint}</div>
-        ))}
-      </div>
-    );
-  };
-
-  const ShareModal = () => {
-    if (gameState === "gameover") {
-      return (
-        <div className="game-over bg-gray-900">
-          <h1>おめでとうございます！ゴールに到達しました！</h1>
-          <p>打数: {stroke}</p>
-          <TwitterShareButton
-            // url={location.href}
-            url="https://wikipedia-golf.vercel.app/"
-            title={`Wikipedia Golfで｢${history[0].title}｣から${stroke}打で｢${goal}｣に到達しました！`}
-            hashtags={["WikipediaGolf"]}
-          >
-            <XIcon size={32} round={true} />
-          </TwitterShareButton>
-        </div>
-      );
-    }
-  };
-
+  const [isHintModalOpen, setHintModal] = useState(false);
   const modalControl = () => {
     setIsModalOpen(!isModalOpen);
   };
@@ -214,7 +184,7 @@ export default function Home() {
         {gameState === "playing" && (
           <button
             className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 mx-6 rounded"
-            onClick={() => setHintModal(!hintModal)}
+            onClick={() => setHintModal(!isHintModalOpen)}
           >
             ヒントを見る
           </button>
@@ -231,7 +201,12 @@ export default function Home() {
         >
           戻る
         </button> */}
-        <ShareModal />
+        <ShareModal
+          gameState={gameState}
+          stroke={stroke}
+          history={history}
+          goal={goal}
+        />
       </div>
       <div className="bg-gray-100 text-black mr-96 flex flex-row justify-start items-start">
         {/* 履歴セクション */}
@@ -261,7 +236,7 @@ export default function Home() {
               <p>ゴールが設定されていません</p>
             </div>
           )}
-          {hintModal && <Hints />}
+          <HintsModal hints={hints} isOpen={isHintModalOpen} />
           <ul className="overflow-auto max-h-screen mt-6">
             {history.map((item, index) => (
               <li key={index}>
