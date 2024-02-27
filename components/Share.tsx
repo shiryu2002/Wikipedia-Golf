@@ -44,7 +44,7 @@ export const ShareModal = ({
       }}
       style={customStyles}
     >
-      <div className="game-over bg-gray-900 text-3xl p-12 rounded-xl">
+      <div className="game-over bg-gray-900 text-3xl p-12 rounded-xl text-white">
         <p className="mb-6">おめでとうございます！ゴールに到達しました！</p>
 
         <p className="text-center mb-6">打数: {stroke}</p>
