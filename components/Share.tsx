@@ -21,12 +21,13 @@ const customStyles = {
     bottom: "auto",
     marginRight: "-50%",
     transform: "translate(-50%, -50%)",
-    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)", // オプション: モーダルに影をつける
     border: "none",
-
+    padding: "0",
+    background: "transparent",
   },
   overlay: {
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(2, 6, 23, 0.78)",
+    backdropFilter: "blur(6px)",
   },
 };
 
@@ -78,38 +79,74 @@ export const ShareModal = ({
       }}
       style={customStyles}
     >
-      <div className="game-over bg-gray-900 text-3xl p-12 rounded-xl text-white">
-        <p className="mb-6">おめでとうございます！ゴールに到達しました！</p>
+      <div className="w-[min(90vw,30rem)] rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-10 text-white shadow-[0_35px_80px_-20px_rgba(15,23,42,0.8)]">
+        <header className="flex items-center gap-4">
+          <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-500/20 text-2xl font-semibold text-blue-200">
+            WG
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-blue-200/80">
+              Congratulations
+            </p>
+            <h2 className="mt-1 text-3xl font-semibold leading-tight">
+              ゴール達成！
+            </h2>
+          </div>
+        </header>
+        <p className="mt-6 text-sm leading-relaxed text-slate-300">
+          {startTitle ? `「${startTitle}」からスタートして「${goal}」に到達しました。` : `「${goal}」に到達しました。`}
+          あなたのプレイ結果をシェアして、友だちとスコアを競いましょう。
+        </p>
 
-        <p className="text-center mb-6">記録: {stroke}打</p>
-        <div className="text-center mb-6">
+        <section className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6">
+          <p className="text-md uppercase tracking-[0.35em] text-slate-300">
+            記録
+          </p>
+          <div className="mt-3 flex items-baseline gap-3">
+            <span className="text-5xl font-bold text-white">{stroke}</span>
+            <span className="text-md text-slate-300">打</span>
+          </div>
+          <dl className="mt-4 space-y-2 text-sm text-slate-200">
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-400">スタート記事</dt>
+              <dd className="text-right text-white/90">
+                {startTitle || "-"}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-slate-400">ゴール記事</dt>
+              <dd className="text-right text-white/90">{goal || "-"}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <TwitterShareButton
             url={shareUrl}
             title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！`}
-            hashtags={[
-              "WikipediaGolf",
-              shareDateTag,
-            ]}
+            hashtags={["WikipediaGolf", shareDateTag]}
           >
-            <div className="flex items-center justify-center">
-              <XIcon size={32} round={true} />
-              <span className="ml-2">で結果をシェアする</span>
+            <div className="group flex w-full items-center justify-center gap-3 rounded-full bg-blue-500/90 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto sm:self-start">
+              <XIcon size={28} round={true} />
+              <span className="tracking-wide">Xで結果をシェア</span>
             </div>
           </TwitterShareButton>
+
           <button
             type="button"
             onClick={handleCopy}
-            className={`mt-4 w-full rounded-lg px-4 py-2 text-sm font-semibold transition ${isCopied
-              ? "bg-black text-white"
-              : "bg-white text-gray-900 hover:bg-gray-200"
+            className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:ml-auto sm:w-auto ${isCopied
+              ? "bg-emerald-500 text-white shadow-lg"
+              : "border border-white/20 bg-transparent text-white hover:bg-white/10"
               }`}
           >
-            {isCopied ? "✓コピーしました！" : "共有テキストをコピー"}
+            {isCopied ? "コピーしました！" : "共有テキストをコピー"}
           </button>
-        </div>
-        <div className="text-xl text-center ">
-          枠外をクリックするとタイトルに戻ります
-        </div>
+        </section>
+
+        <p className="mt-8 text-center text-xs text-slate-400">
+          タイトルに戻るには枠外をクリックしてください。
+        </p>
       </div>
     </Modal>
   );
