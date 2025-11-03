@@ -14,6 +14,12 @@ import CircularProgress from "@mui/material/CircularProgress";
 
 type StartMode = "random" | "daily";
 
+type GoalDetailsCacheEntry = {
+  html: string;
+  numOfRef: number;
+  hints: string[];
+};
+
 export default function GamePage() {
   const router = useRouter();
   const autoStartRef = useRef(false);
@@ -36,11 +42,13 @@ export default function GamePage() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [numOfReferer, setNumOfReferer] = useState<number>(0);
-  const [hints, setHints] = useState([]);
+  const [hints, setHints] = useState<string[]>([]);
   const [isHintModalOpen, setHintModal] = useState(false);
   const [isDailyMode, setIsDailyMode] = useState(false);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
   const ignoreNextContentRef = useRef(false);
+  const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
+  const articleCacheRef = useRef(new Map<string, string>());
 
   const pickStart = async () => {
     try {
@@ -61,17 +69,57 @@ export default function GamePage() {
     pageId?: number;
   }) => {
     setGoal(options.title);
-    const ref = await countReferer(options.title, locale);
-    setNumOfReferer(ref.numOfRef);
-    setHints(ref.hints);
+    const cacheKey = options.pageId !== undefined
+      ? `${locale}:goal:id:${options.pageId}`
+      : `${locale}:goal:title:${options.title}`;
+
+    const cached = goalDetailsCacheRef.current.get(cacheKey);
+    if (cached) {
+      setNumOfReferer(cached.numOfRef);
+      setHints(cached.hints);
+      setGoalArticle(cached.html);
+      return;
+    }
 
     const goalUrl = options.pageId !== undefined
       ? `https://${locale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
       : `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
 
-    const response = await fetch(goalUrl);
-    const data = await response.json();
-    setGoalArticle(data.parse?.text?.["*"] ?? "");
+    try {
+      const [refResult, parseResult] = await Promise.all([
+        countReferer(options.title, locale),
+        fetch(goalUrl).then((response) => {
+          if (!response.ok) {
+            throw new Error(`Failed to fetch goal article for ${options.title}`);
+          }
+          return response.json();
+        }),
+      ]);
+
+      const goalHtml: string = parseResult.parse?.text?.["*"] ?? "";
+      const resolvedPageId: number | undefined = options.pageId ?? parseResult.parse?.pageid;
+      const normalizedHints: string[] = Array.isArray(refResult.hints)
+        ? refResult.hints.map((hint: any) => String(hint))
+        : [];
+
+      const entry: GoalDetailsCacheEntry = {
+        html: goalHtml,
+        numOfRef: Number(refResult.numOfRef ?? 0),
+        hints: normalizedHints,
+      };
+
+      goalDetailsCacheRef.current.set(cacheKey, entry);
+      goalDetailsCacheRef.current.set(`${locale}:goal:title:${options.title}`, entry);
+      if (resolvedPageId !== undefined) {
+        goalDetailsCacheRef.current.set(`${locale}:goal:id:${resolvedPageId}`, entry);
+      }
+
+      setNumOfReferer(entry.numOfRef);
+      setHints(entry.hints);
+      setGoalArticle(entry.html);
+    } catch (error) {
+      console.error("ゴールページの取得に失敗しました", error);
+    }
   };
 
   const getGoal = async () => {
@@ -136,39 +184,71 @@ export default function GamePage() {
     };
   }, [content, goalArticle, isGoalDetailsView]);
 
+  const applyArticleContent = (
+    articleTitle: string,
+    html: string,
+    shouldSkipProgressUpdate: boolean,
+    requestUrl: string,
+  ) => {
+    setContent(html);
+
+    if (
+      !shouldSkipProgressUpdate &&
+      articleTitle !== "メインページ" &&
+      gameState === "playing"
+    ) {
+      setStroke((prevStroke) => {
+        const nextStroke = prevStroke + 1;
+        setHistory((prev) => [
+          ...prev,
+          { title: articleTitle, url: requestUrl, stroke: nextStroke },
+        ]);
+        return nextStroke;
+      });
+    }
+
+    checkIfGameOver(articleTitle);
+  };
+
+  const finalizeArticleLoad = (shouldSkipProgressUpdate: boolean) => {
+    window.scrollTo(0, 0);
+    if (!shouldSkipProgressUpdate) {
+      setIsDailyStartup(false);
+    }
+    ignoreNextContentRef.current = false;
+  };
+
   const fetchTitle = async (title: string) => {
-    setIsLoading(true);
     const encodedTitle = encodeURIComponent(title);
-    const url = `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodedTitle}&format=json&origin=*`;
+    const requestUrl = `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodedTitle}&format=json&origin=*`;
+    const cacheKey = `${locale}:${title}`;
     const shouldSkipProgressUpdate = ignoreNextContentRef.current;
+
+    const cachedHtml = articleCacheRef.current.get(cacheKey);
+    if (cachedHtml !== undefined) {
+      setIsLoading(false);
+      applyArticleContent(title, cachedHtml, shouldSkipProgressUpdate, requestUrl);
+      finalizeArticleLoad(shouldSkipProgressUpdate);
+      return;
+    }
+
+    setIsLoading(true);
     try {
-      const response = await fetch(url);
-      const data = await response.json();
-
-      setContent(data.parse?.text?.["*"] ?? "");
-
-      if (!shouldSkipProgressUpdate && title !== "メインページ" && gameState === "playing") {
-        setStroke((prevStroke) => {
-          const nextStroke = prevStroke + 1;
-          setHistory((prev) => [
-            ...prev,
-            { title, url, stroke: nextStroke },
-          ]);
-          return nextStroke;
-        });
+      const response = await fetch(requestUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch article: ${title}`);
       }
+      const data = await response.json();
+      const html = data.parse?.text?.["*"] ?? "";
 
-      checkIfGameOver(title);
+      articleCacheRef.current.set(cacheKey, html);
+      applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
       setIsDailyStartup(false);
     } finally {
       setIsLoading(false);
-      window.scrollTo(0, 0);
-      if (!shouldSkipProgressUpdate) {
-        setIsDailyStartup(false);
-      }
-      ignoreNextContentRef.current = false;
+      finalizeArticleLoad(shouldSkipProgressUpdate);
     }
   };
 
@@ -300,40 +380,38 @@ export default function GamePage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <div className="flex shrink-0 items-center leading-tight">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6 sm:px-6">
+          <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4 sm:gap-5">
               <Image
                 src="/w2.png"
                 alt="Wikipedia Golf アイコン"
                 width={64}
                 height={64}
-                className="h-16 w-16 rounded-2xl object-cover mr-4"
+                className="h-14 w-14 rounded-2xl object-cover sm:h-16 sm:w-16"
                 priority
               />
-              <h1 className="text-3xl font-semibold text-slate-600 md:text-4xl">
+              <h1 className="text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
                 Wikipedia Golf
               </h1>
-              <p className="text-3xl ml-10 tracking-[0.3em] text-slate-400">
-                打数:
-                <span className="text-4xl font-semibold text-white">
-                  {stroke === -1 ? "0" : stroke}
-                </span>
-              </p>
             </div>
-
-
+            <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
+              打数:
+              <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
+                {stroke === -1 ? "0" : stroke}
+              </span>
+            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
             <button
-              className="rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400"
+              className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto"
               onClick={() => start("random")}
             >
               ランダムでスタート
             </button>
             {!isDailyRunActive && (
               <button
-                className="rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white"
+                className="w-full rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white sm:w-auto"
                 onClick={() => start("daily")}
               >
                 今日のお題に挑戦
@@ -341,7 +419,7 @@ export default function GamePage() {
             )}
             {gameState === "playing" && (
               <button
-                className="rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
                 onClick={() => setHintModal(!isHintModalOpen)}
               >
                 ヒントを見る
@@ -357,9 +435,44 @@ export default function GamePage() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8 lg:flex-row">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 lg:flex-row">
         <aside className="flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-          <section className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl">
+          <section className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl md:hidden">
+            <p className="text-xs uppercase tracking-[0.3em] text-white/70">
+              今日のお題
+            </p>
+            <h2 className="mt-3 text-2xl font-semibold leading-tight">
+              {dailyGoalTitle}
+            </h2>
+            <p className="mt-1 text-sm text-white/80">日付: {dailyGoalDate}</p>
+            <div className="mt-4 flex flex-col gap-3">
+              {!isDailyRunActive && (
+                <button
+                  className="w-full rounded-full bg-white py-3 text-center font-semibold text-slate-900 shadow transition hover:bg-slate-100"
+                  onClick={() => start("daily")}
+                >
+                  このお題でスタート
+                </button>
+              )}
+              <button
+                className={`w-full rounded-full border border-white/40 py-3 text-center text-white transition ${goal ? "hover:bg-white/10" : "cursor-not-allowed opacity-40"
+                  }`}
+                onClick={() => {
+                  if (!goal) return;
+                  setIsGoalDetailsView((prev) => !prev);
+                }}
+                disabled={!goal}
+              >
+                {goal
+                  ? isGoalDetailsView
+                    ? "現在の記事に戻る"
+                    : "ゴール記事を表示"
+                  : "ゴールは未設定"}
+              </button>
+            </div>
+          </section>
+
+          <section className="hidden rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl md:block">
             <p className="text-xs uppercase tracking-[0.3em] text-white/70">
               今日のお題
             </p>
@@ -428,7 +541,7 @@ export default function GamePage() {
                 1手戻す
               </button>
             </div>
-            <div className="mt-4 max-h-[50vh] space-y-3 overflow-y-auto pr-2">
+            <div className="mt-4 space-y-3 pr-2 lg:max-h-[50vh] lg:overflow-y-auto">
               {history.length === 0 ? (
                 <p className="text-sm text-slate-300">
                   まだ遷移履歴がありません。
@@ -453,7 +566,7 @@ export default function GamePage() {
         </aside>
 
         <section className="flex-1">
-          <div className="rounded-3xl border border-white/10 bg-white p-6 shadow-2xl">
+          <div className="rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
               <div className="max-w-2xl">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
@@ -478,29 +591,29 @@ export default function GamePage() {
               )}
             </div>
             {shouldShowDailyStartup ? (
-              <div className="flex h-[70vh] flex-col items-center justify-center gap-4 text-slate-600">
+              <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-slate-600 sm:min-h-[70vh]">
                 <CircularProgress />
                 <p className="text-sm font-medium tracking-wide">
                   今日のお題を取得中…
                 </p>
               </div>
             ) : isPrimaryArticleLoading ? (
-              <div className="flex h-[70vh] items-center justify-center">
+              <div className="flex min-h-[60vh] items-center justify-center sm:min-h-[70vh]">
                 <CircularProgress />
               </div>
             ) : activeArticleHtml ? (
               <div
                 id="articleContent"
-                className="max-w-full text-slate-900 leading-relaxed"
+                className="article-content max-w-full text-slate-900"
                 dangerouslySetInnerHTML={{ __html: activeArticleHtml }}
               />
             ) : gameState === "idle" ? (
-              <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-slate-500">
+              <div className="flex min-h-[60vh] flex-col items-center justify-center text-sm text-slate-500 sm:min-h-[70vh]">
                 <p>ゲームを開始すると、記事がここに表示されます。</p>
                 <p className="mt-1">お題を選んでプレイを始めてください。</p>
               </div>
             ) : (
-              <div className="flex h-[70vh] flex-col items-center justify-center text-sm text-slate-500">
+              <div className="flex min-h-[60vh] flex-col items-center justify-center text-sm text-slate-500 sm:min-h-[70vh]">
                 <p>記事を読み込めませんでした。</p>
                 <p className="mt-1">別のリンクを開くか、再度お試しください。</p>
               </div>
