@@ -40,7 +40,7 @@ export const ShareModal = ({
       isOpen={gameState === "gameover"}
       onRequestClose={() => {
         if (window.confirm("タイトルに戻りますか？")) {
-          window.location.reload();
+          window.location.href = "/";
         }
       }}
       style={customStyles}
