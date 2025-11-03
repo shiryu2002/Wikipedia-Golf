@@ -22,6 +22,7 @@ const customStyles = {
     transform: "translate(-50%, -50%)",
     boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)", // オプション: モーダルに影をつける
     border: "none",
+
   },
   overlay: {
     backgroundColor: "rgba(0, 0, 0, 0.75)",
@@ -51,10 +52,12 @@ export const ShareModal = ({
         <div className="text-center mb-6">
           <TwitterShareButton
             url="https://wikipedia-golf.vercel.app/"
-            title={`Wikipedia Golfで｢${
-              history.length > 0 ? history[0].title : ""
-            }｣から${stroke}打で｢${goal}｣に到達しました！`}
-            hashtags={["WikipediaGolf"]}
+            title={`Wikipedia Golfで｢${history.length > 0 ? history[0].title : ""
+              }｣から${stroke}打で｢${goal}｣に到達しました！`}
+            hashtags={[
+              "WikipediaGolf",
+              `WikipediaGolf_${new Date().toISOString().slice(0, 10).replace(/-/g, "_")}`,
+            ]}
           >
             <div className="flex items-center justify-center">
               <XIcon size={32} round={true} />
