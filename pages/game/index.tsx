@@ -4,6 +4,8 @@ import { useRouter } from "next/router";
 
 import { HintsModal } from "@/components/Hints";
 import { ShareModal } from "@/components/Share";
+import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
+import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
 import Image from "next/image";
 import {
   DailyChallenge,
@@ -46,6 +48,7 @@ export default function GamePage() {
   const [isHintModalOpen, setHintModal] = useState(false);
   const [isDailyMode, setIsDailyMode] = useState(false);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
+  const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
@@ -279,6 +282,7 @@ export default function GamePage() {
       const shouldRestart = window.confirm("別のお題でやり直しますか？");
       if (!shouldRestart) return;
     }
+    setHistoryModalOpen(false);
     setGameState("idle");
     setHintModal(false);
     setStroke(-1);
@@ -376,13 +380,18 @@ export default function GamePage() {
   const dailyGoalDate = dailyChallenge?.date ?? todayIso;
   const isDailyRunActive = isDailyMode && gameState === "playing";
   const shouldShowDailyStartup = isDailyStartup && !isGoalDetailsView;
+  const startArticleTitle = history.length > 0
+    ? history[0].title
+    : title || dailyChallenge?.start.title || "未設定";
+  const headerGoalTitle = goal || dailyChallenge?.goal.title || "未設定";
+  const canToggleGoal = Boolean(goal);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4 sm:gap-5">
+            <div className="hidden items-center gap-4 sm:flex sm:gap-5">
               <Image
                 src="/w2.png"
                 alt="Wikipedia Golf アイコン"
@@ -395,36 +404,84 @@ export default function GamePage() {
                 Wikipedia Golf
               </h1>
             </div>
-            <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
-              打数:
-              <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
-                {stroke === -1 ? "0" : stroke}
-              </span>
-            </p>
-          </div>
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-            <button
-              className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto"
-              onClick={() => start("random")}
-            >
-              ランダムでスタート
-            </button>
-            {!isDailyRunActive && (
-              <button
-                className="w-full rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white sm:w-auto"
-                onClick={() => start("daily")}
-              >
-                今日のお題に挑戦
-              </button>
-            )}
-            {gameState === "playing" && (
-              <button
-                className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-                onClick={() => setHintModal(!isHintModalOpen)}
-              >
-                ヒントを見る
-              </button>
-            )}
+            <div className="flex w-full flex-col gap-3 sm:flex-1">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start sm:gap-4">
+                <div className="flex w-full max-w-full gap-4 pr-4 sm:hidden">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">
+                      スタート
+                    </p>
+                    <p className="truncate text-sm font-semibold text-white">
+                      {startArticleTitle}
+                    </p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">
+                      ゴール
+                    </p>
+                    <p className="truncate text-sm font-semibold text-white">
+                      {headerGoalTitle}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex w-full justify-end sm:w-auto sm:justify-start sm:ml-auto">
+                  <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
+                    打数:
+                    <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
+                      {stroke === -1 ? "0" : stroke}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:gap-3 sm:justify-end">
+                <button
+                  className="flex-1 min-w-[140px] rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:flex-none sm:w-auto"
+                  onClick={() => start("random")}
+                >
+                  ランダムでスタート
+                </button>
+                {!isDailyRunActive && (
+                  <button
+                    className="flex-1 min-w-[140px] rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white sm:flex-none sm:w-auto"
+                    onClick={() => start("daily")}
+                  >
+                    今日のお題に挑戦
+                  </button>
+                )}
+                {gameState === "playing" && (
+                  <button
+                    className="flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:flex-none sm:w-auto"
+                    onClick={() => setHintModal(!isHintModalOpen)}
+                  >
+                    ヒントを見る
+                  </button>
+                )}
+                <button
+                  className="flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:hidden"
+                  onClick={() => setHistoryModalOpen(true)}
+                  type="button"
+                >
+                  ルート
+                </button>
+                <button
+                  className={`flex-1 min-w-[140px] rounded-full px-5 py-3 text-sm font-semibold transition sm:hidden ${canToggleGoal
+                    ? "border border-white/20 text-white hover:bg-white/10"
+                    : "cursor-not-allowed border border-white/10 text-slate-500"}`}
+                  onClick={() => {
+                    if (!canToggleGoal) return;
+                    setIsGoalDetailsView((prev) => !prev);
+                  }}
+                  disabled={!canToggleGoal}
+                  type="button"
+                >
+                  {canToggleGoal
+                    ? isGoalDetailsView
+                      ? "現在の記事に戻る"
+                      : "ゴール記事を表示"
+                    : "ゴールは未設定"}
+                </button>
+              </div>
+            </div>
           </div>
           <ShareModal
             gameState={gameState}
@@ -436,43 +493,8 @@ export default function GamePage() {
       </header>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 lg:flex-row">
-        <aside className="flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-          <section className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl md:hidden">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-              今日のお題
-            </p>
-            <h2 className="mt-3 text-2xl font-semibold leading-tight">
-              {dailyGoalTitle}
-            </h2>
-            <p className="mt-1 text-sm text-white/80">日付: {dailyGoalDate}</p>
-            <div className="mt-4 flex flex-col gap-3">
-              {!isDailyRunActive && (
-                <button
-                  className="w-full rounded-full bg-white py-3 text-center font-semibold text-slate-900 shadow transition hover:bg-slate-100"
-                  onClick={() => start("daily")}
-                >
-                  このお題でスタート
-                </button>
-              )}
-              <button
-                className={`w-full rounded-full border border-white/40 py-3 text-center text-white transition ${goal ? "hover:bg-white/10" : "cursor-not-allowed opacity-40"
-                  }`}
-                onClick={() => {
-                  if (!goal) return;
-                  setIsGoalDetailsView((prev) => !prev);
-                }}
-                disabled={!goal}
-              >
-                {goal
-                  ? isGoalDetailsView
-                    ? "現在の記事に戻る"
-                    : "ゴール記事を表示"
-                  : "ゴールは未設定"}
-              </button>
-            </div>
-          </section>
-
-          <section className="hidden rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl md:block">
+        <aside className="hidden md:flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+          <section className="hidden rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl sm:block">
             <p className="text-xs uppercase tracking-[0.3em] text-white/70">
               今日のお題
             </p>
@@ -508,7 +530,7 @@ export default function GamePage() {
           </section>
 
           {goal && (
-            <section className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur">
+            <section className="hidden rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur sm:block">
               <button
                 className="flex w-full items-center justify-between text-left"
                 onClick={() => {
@@ -527,7 +549,7 @@ export default function GamePage() {
             </section>
           )}
 
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur">
+          <section className="hidden rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur sm:block">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">辿ったルート</h2>
               <button
@@ -562,7 +584,9 @@ export default function GamePage() {
             </div>
           </section>
 
-          <HintsModal hints={hints} isOpen={isHintModalOpen} />
+          <div className="hidden sm:block">
+            <HintsModal hints={hints} isOpen={isHintModalOpen} />
+          </div>
         </aside>
 
         <section className="flex-1">
@@ -621,6 +645,17 @@ export default function GamePage() {
           </div>
         </section>
       </main>
+      <MobileHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        onBack={handleBackClick}
+        history={history}
+      />
+      <MobileHintsModal
+        isOpen={isHintModalOpen}
+        onClose={() => setHintModal(false)}
+        hints={hints}
+      />
     </div>
   );
 }
