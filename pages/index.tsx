@@ -1,16 +1,189 @@
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/router";
 
 import {
   DailyChallenge,
   fetchDailyChallenge,
 } from "@/useCase/dailyChallenge";
 
+const useArticleSuggestions = (
+  query: string,
+  locale: "en" | "ja",
+  isActive: boolean,
+) => {
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isActive) {
+      setSuggestions([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const debounceId = window.setTimeout(async () => {
+      setIsLoading(true);
+      try {
+        const params = new URLSearchParams({
+          action: "query",
+          list: "prefixsearch",
+          pssearch: trimmed,
+          pslimit: "6",
+          format: "json",
+          origin: "*",
+        });
+        const endpoint = `https://${locale}.wikipedia.org/w/api.php?${params.toString()}`;
+        const response = await fetch(endpoint, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch prefix search for ${trimmed}`);
+        }
+        const data = await response.json();
+        const resultItems: string[] = Array.isArray(data?.query?.prefixsearch)
+          ? data.query.prefixsearch
+            .map((item: { title?: string }) => item?.title)
+            .filter((title: string | undefined): title is string => Boolean(title))
+          : [];
+        setSuggestions(resultItems);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          console.error("記事サジェストの取得に失敗しました", error);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(debounceId);
+      setIsLoading(false);
+    };
+  }, [query, locale, isActive]);
+
+  return { suggestions, isLoading };
+};
+
 export default function Home() {
-  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(
-    null
+  const router = useRouter();
+  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [isCustomModalOpen, setCustomModalOpen] = useState(false);
+  const [customStartTitle, setCustomStartTitle] = useState("");
+  const [customGoalTitle, setCustomGoalTitle] = useState("");
+  const [customLocale, setCustomLocale] = useState<"ja" | "en">("ja");
+  const [customError, setCustomError] = useState<string | null>(null);
+  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+  const [showStartSuggestions, setShowStartSuggestions] = useState(false);
+  const [showGoalSuggestions, setShowGoalSuggestions] = useState(false);
+
+  const {
+    suggestions: startSuggestions,
+    isLoading: isStartSuggestionsLoading,
+  } = useArticleSuggestions(
+    customStartTitle,
+    customLocale,
+    isCustomModalOpen && showStartSuggestions,
   );
+  const {
+    suggestions: goalSuggestions,
+    isLoading: isGoalSuggestionsLoading,
+  } = useArticleSuggestions(
+    customGoalTitle,
+    customLocale,
+    isCustomModalOpen && showGoalSuggestions,
+  );
+
+  const handleOpenCustomModal = useCallback(() => {
+    setCustomError(null);
+    setCustomModalOpen(true);
+  }, []);
+
+  const handleCloseCustomModal = useCallback(() => {
+    setCustomError(null);
+    setShowStartSuggestions(false);
+    setShowGoalSuggestions(false);
+    setCustomModalOpen(false);
+  }, []);
+
+  const handleSuggestionSelect = useCallback((type: "start" | "goal", value: string) => {
+    if (type === "start") {
+      setCustomStartTitle(value);
+      setShowStartSuggestions(false);
+    } else {
+      setCustomGoalTitle(value);
+      setShowGoalSuggestions(false);
+    }
+  }, []);
+
+  const handleLocaleChange = useCallback((nextLocale: "ja" | "en") => {
+    setCustomLocale(nextLocale);
+    setShowStartSuggestions(false);
+    setShowGoalSuggestions(false);
+  }, []);
+
+  const handleCustomSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedStart = customStartTitle.trim();
+    const trimmedGoal = customGoalTitle.trim();
+
+    if (!trimmedStart || !trimmedGoal) {
+      setCustomError("スタートとゴールの記事名を入力してください。");
+      return;
+    }
+
+    setCustomError(null);
+    setIsSubmittingCustom(true);
+    try {
+      await router.push({
+        pathname: "/game",
+        query: {
+          start: "custom",
+          startTitle: trimmedStart,
+          goalTitle: trimmedGoal,
+          locale: customLocale,
+        },
+      });
+      handleCloseCustomModal();
+    } catch (error) {
+      console.error("カスタムお題の開始に失敗しました", error);
+      setCustomError("お題の開始に失敗しました。時間をおいて再度お試しください。");
+    } finally {
+      setIsSubmittingCustom(false);
+    }
+  }, [customStartTitle, customGoalTitle, customLocale, router, handleCloseCustomModal]);
+
+  useEffect(() => {
+    if (!isCustomModalOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isCustomModalOpen]);
+
+  useEffect(() => {
+    if (!isCustomModalOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCloseCustomModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isCustomModalOpen, handleCloseCustomModal]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -38,6 +211,9 @@ export default function Home() {
   const dailyGoalTitle = dailyChallenge?.goal.title ?? "読み込み中";
   const dailyStartTitle = dailyChallenge?.start.title ?? "読み込み中";
   const dailyGoalDate = dailyChallenge?.date ?? new Date().toISOString().slice(0, 10);
+  const isCustomSubmitDisabled = isSubmittingCustom
+    || !customStartTitle.trim()
+    || !customGoalTitle.trim();
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -62,7 +238,8 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <div className="hidden md:flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+
+            {/* <div className="hidden md:flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
               <Link
                 className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto"
                 href="/game?start=daily"
@@ -75,13 +252,20 @@ export default function Home() {
               >
                 ランダムに挑戦
               </Link>
-            </div>
+              <button
+                type="button"
+                onClick={handleOpenCustomModal}
+                className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
+              >
+                カスタムお題を作成
+              </button>
+            </div> */}
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-4 sm:px-6 sm:py-12">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-8 text-white shadow-2xl">
             <p className="text-sm text-white/70">
               今日のお題
@@ -102,6 +286,13 @@ export default function Home() {
               >
                 ランダムなお題に挑戦
               </Link>
+              <button
+                type="button"
+                onClick={handleOpenCustomModal}
+                className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
+              >
+                カスタムお題を作成
+              </button>
             </div>
           </div>
           <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
@@ -161,8 +352,212 @@ export default function Home() {
               <li>日替わりモードで、毎日全員が同じお題に挑戦できます。</li>
             </ul>
           </article>
+          <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
+            <h2 className="text-2xl font-semibold">広告募集中</h2>
+            <ul className="mt-6 space-y-4 text-sm text-slate-200">
+              <li></li>
+            </ul>
+          </article>
         </section>
       </main>
+      {isCustomModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8 backdrop-blur"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="w-[min(90vw,34rem)] rounded-3xl border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-8 text-white shadow-[0_35px_80px_-20px_rgba(15,23,42,0.8)]"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.35em] text-blue-200/80">
+                  Custom Challenge
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold leading-tight">
+                  カスタムお題を作成
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  スタートとゴールの記事名を入力すると、同じ条件でゲームを開始できます。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseCustomModal}
+                className="rounded-full border border-white/10 px-3 py-1 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:text-white"
+              >
+                閉じる
+              </button>
+            </div>
+
+            <form className="mt-8 space-y-6" onSubmit={handleCustomSubmit}>
+              <div>
+                <span className="text-xs uppercase tracking-[0.3em] text-blue-200">
+                  Locale
+                </span>
+                <div className="mt-3 inline-flex rounded-full border border-white/15 bg-white/5 p-1 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => handleLocaleChange("ja")}
+                    className={`rounded-full px-4 py-2 transition ${customLocale === "ja" ? "bg-blue-500 text-white shadow" : "text-slate-200 hover:text-white"}`}
+                  >
+                    日本語
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleLocaleChange("en")}
+                    className={`rounded-full px-4 py-2 transition ${customLocale === "en" ? "bg-blue-500 text-white shadow" : "text-slate-200 hover:text-white"}`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-slate-100" htmlFor="customStartTitle">
+                  スタート記事
+                </label>
+                <div
+                  className="relative mt-3"
+                  role="combobox"
+                  aria-expanded={showStartSuggestions && startSuggestions.length > 0}
+                  aria-haspopup="listbox"
+                  aria-controls="customStartSuggestions"
+                >
+                  <input
+                    id="customStartTitle"
+                    name="customStartTitle"
+                    value={customStartTitle}
+                    onChange={(event) => {
+                      setCustomStartTitle(event.target.value);
+                      setShowStartSuggestions(true);
+                    }}
+                    onFocus={() => setShowStartSuggestions(true)}
+                    onBlur={() => window.setTimeout(() => setShowStartSuggestions(false), 150)}
+                    className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder-slate-500 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    placeholder="例: 日本"
+                    autoFocus
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="customStartSuggestions"
+                  />
+                  {isStartSuggestionsLoading && (
+                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs text-slate-400">
+                      検索中…
+                    </span>
+                  )}
+                  {showStartSuggestions && startSuggestions.length > 0 && (
+                    <ul
+                      className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl"
+                      role="listbox"
+                      id="customStartSuggestions"
+                    >
+                      {startSuggestions.map((item) => (
+                        <li
+                          key={`start-${item}`}
+                          className="border-b border-white/5 last:border-none"
+                          role="option"
+                          aria-selected={false}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-slate-100 transition hover:bg-white/10"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionSelect("start", item)}
+                          >
+                            <span className="truncate">{item}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-slate-100" htmlFor="customGoalTitle">
+                  ゴール記事
+                </label>
+                <div
+                  className="relative mt-3"
+                  role="combobox"
+                  aria-expanded={showGoalSuggestions && goalSuggestions.length > 0}
+                  aria-haspopup="listbox"
+                  aria-controls="customGoalSuggestions"
+                >
+                  <input
+                    id="customGoalTitle"
+                    name="customGoalTitle"
+                    value={customGoalTitle}
+                    onChange={(event) => {
+                      setCustomGoalTitle(event.target.value);
+                      setShowGoalSuggestions(true);
+                    }}
+                    onFocus={() => setShowGoalSuggestions(true)}
+                    onBlur={() => window.setTimeout(() => setShowGoalSuggestions(false), 150)}
+                    className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder-slate-500 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                    placeholder="例: 光速"
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-controls="customGoalSuggestions"
+                  />
+                  {isGoalSuggestionsLoading && (
+                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs text-slate-400">
+                      検索中…
+                    </span>
+                  )}
+                  {showGoalSuggestions && goalSuggestions.length > 0 && (
+                    <ul
+                      className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl"
+                      role="listbox"
+                      id="customGoalSuggestions"
+                    >
+                      {goalSuggestions.map((item) => (
+                        <li
+                          key={`goal-${item}`}
+                          className="border-b border-white/5 last:border-none"
+                          role="option"
+                          aria-selected={false}
+                        >
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-slate-100 transition hover:bg-white/10"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionSelect("goal", item)}
+                          >
+                            <span className="truncate">{item}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {customError && (
+                <p className="text-sm text-rose-300">{customError}</p>
+              )}
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleCloseCustomModal}
+                  className="w-full rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCustomSubmitDisabled}
+                  className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:w-auto ${isCustomSubmitDisabled ? "cursor-not-allowed bg-blue-500/40 text-white/70" : "bg-blue-500 text-white shadow-lg hover:bg-blue-400"}`}
+                >
+                  {isSubmittingCustom ? "開始中…" : "この条件で開始"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

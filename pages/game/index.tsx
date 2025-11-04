@@ -72,7 +72,7 @@ export default function GamePage() {
     }
   }, [isGoalDetailsView]);
 
-  const pickStart = async () => {
+  const pickStart = async (): Promise<string | null> => {
     try {
       const response = await fetch(
         `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`
@@ -81,8 +81,10 @@ export default function GamePage() {
       const randomTitle = data.query.random[0].title;
       setTitle(randomTitle);
       setGameState("playing");
+      return randomTitle;
     } catch (error) {
       console.error("スタートページの取得に失敗しました", error);
+      return null;
     }
   };
 
@@ -146,7 +148,7 @@ export default function GamePage() {
     }
   };
 
-  const getGoal = async () => {
+  const getGoal = async (): Promise<string | null> => {
     setIsDailyMode(false);
     setIsGoalLoading(true);
     try {
@@ -156,8 +158,10 @@ export default function GamePage() {
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
       await populateGoalDetails({ title: randomTitle });
+      return randomTitle;
     } catch (error) {
       console.error("ゴールページの取得に失敗しました", error);
+      return null;
     } finally {
       setIsGoalLoading(false);
     }
@@ -376,7 +380,9 @@ export default function GamePage() {
       );
     }
 
-    if (mode === "custom" && options) {
+    const hasExplicitArticles = Boolean(options?.startTitle && options?.goalTitle);
+
+    if ((mode === "custom" || (mode === "random" && hasExplicitArticles)) && options) {
       const targetLocale = options.locale ?? locale;
       if (targetLocale !== locale) {
         setLocale(targetLocale);
@@ -400,14 +406,42 @@ export default function GamePage() {
         } finally {
           setIsGoalLoading(false);
         }
+
+        if (mode === "random") {
+          autoStartRef.current = true;
+          void router.replace({
+            pathname: router.pathname,
+            query: {
+              start: "random",
+              startTitle: options.startTitle,
+              goalTitle: options.goalTitle,
+              locale: targetLocale,
+            },
+          }, undefined, { shallow: true });
+        }
         return;
       }
     }
 
     setIsDailyMode(false);
     setIsDailyStartup(false);
-    await pickStart();
-    await getGoal();
+    const [randomStartTitle, randomGoalTitle] = await Promise.all([
+      pickStart(),
+      getGoal(),
+    ]);
+
+    if (randomStartTitle && randomGoalTitle) {
+      autoStartRef.current = true;
+      void router.replace({
+        pathname: router.pathname,
+        query: {
+          start: "random",
+          startTitle: randomStartTitle,
+          goalTitle: randomGoalTitle,
+          locale,
+        },
+      }, undefined, { shallow: true });
+    }
   };
 
   const decodeQueryParam = (value: string | string[] | undefined) => {
@@ -456,8 +490,17 @@ export default function GamePage() {
     let resolvedMode: StartMode | null = null;
     let startOptions: StartOptions | undefined;
 
-    if (startParam === "daily" || startParam === "random") {
-      resolvedMode = startParam;
+    if (startParam === "daily") {
+      resolvedMode = "daily";
+    } else if (startParam === "random" && startTitleParam && goalTitleParam) {
+      resolvedMode = "random";
+      startOptions = {
+        startTitle: startTitleParam,
+        goalTitle: goalTitleParam,
+        locale: localeParam === "en" ? "en" : localeParam === "ja" ? "ja" : undefined,
+      };
+    } else if (startParam === "random") {
+      resolvedMode = "random";
     } else if (startParam === "custom" || (startTitleParam && goalTitleParam)) {
       resolvedMode = "custom";
       startOptions = {

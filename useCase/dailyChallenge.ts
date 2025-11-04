@@ -11,9 +11,9 @@ export type DailyChallenge = {
 };
 
 const DAILY_ID_MULTIPLIERS = {
-  year: 1,
-  month: 10,
-  day: 100,
+  year: 10,
+  month: 100,
+  day: 1000,
 } as const;
 
 const API_BASE = (locale: "ja" | "en") =>
@@ -113,12 +113,9 @@ const computeDailyBaseId = (date: Date): number => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
   const day = date.getDate();
+  const result = (year * DAILY_ID_MULTIPLIERS.year + month * DAILY_ID_MULTIPLIERS.month + day * DAILY_ID_MULTIPLIERS.day) * day;
 
-  return (
-    year * DAILY_ID_MULTIPLIERS.year +
-    month * DAILY_ID_MULTIPLIERS.month +
-    day * DAILY_ID_MULTIPLIERS.day
-  );
+  return result;
 };
 
 export const fetchDailyChallenge = async (
@@ -128,8 +125,8 @@ export const fetchDailyChallenge = async (
   const isoDate = today.toISOString().slice(0, 10);
   const baseId = computeDailyBaseId(today);
 
-  const goal = await findExistingPage(locale, baseId);
-  const start = await findExistingPage(locale, goal.id + 100);
+  const goal = await findExistingPage(locale, baseId + 100);
+  const start = await findExistingPage(locale, goal.id + 1000);
 
   return {
     locale,
