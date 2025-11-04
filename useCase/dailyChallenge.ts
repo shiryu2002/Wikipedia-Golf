@@ -21,6 +21,15 @@ const API_BASE = (locale: "ja" | "en") =>
 
 const MAX_SEARCH_OFFSET = 500;
 const PAGEID_CHUNK_SIZE = 50;
+const MAX_CONCURRENT_BATCHES = 5;
+
+const chunkArray = <T,>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
 
 const buildCandidateIds = (baseId: number): number[] => {
   const ids: number[] = [];
@@ -49,6 +58,11 @@ const fetchPageMetaBatch = async (
     throw new Error(`Failed to fetch page metadata for ids: ${queryIds}`);
   }
   const json = await response.json();
+  if (json?.error) {
+    throw new Error(
+      `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"}`,
+    );
+  }
   return json?.query?.pages ?? {};
 };
 
@@ -58,17 +72,36 @@ const findExistingPage = async (
 ): Promise<DailyChallengeEntry> => {
   const candidates = buildCandidateIds(baseId);
 
-  for (let index = 0; index < candidates.length; index += PAGEID_CHUNK_SIZE) {
-    const chunk = candidates.slice(index, index + PAGEID_CHUNK_SIZE);
-    const pages = await fetchPageMetaBatch(locale, chunk);
+  const candidateChunks = chunkArray(candidates, PAGEID_CHUNK_SIZE);
 
-    for (const candidateId of chunk) {
-      const page = pages?.[String(candidateId)];
-      if (page && !page.missing && !page.invalid) {
-        return {
-          id: page.pageid ?? candidateId,
-          title: page.title,
-        };
+  for (let index = 0; index < candidateChunks.length; index += MAX_CONCURRENT_BATCHES) {
+    const chunkBatch = candidateChunks.slice(index, index + MAX_CONCURRENT_BATCHES);
+    const batchResults = await Promise.all(
+      chunkBatch.map(async (chunk) => {
+        try {
+          return await fetchPageMetaBatch(locale, chunk);
+        } catch (error) {
+          console.error("ページメタデータの取得に失敗しました", error);
+          return null;
+        }
+      }),
+    );
+
+    for (let batchIndex = 0; batchIndex < chunkBatch.length; batchIndex += 1) {
+      const chunk = chunkBatch[batchIndex];
+      const pages = batchResults[batchIndex];
+      if (!pages) {
+        continue;
+      }
+
+      for (const candidateId of chunk) {
+        const page = pages?.[String(candidateId)];
+        if (page && !page.missing && !page.invalid) {
+          return {
+            id: page.pageid ?? candidateId,
+            title: page.title,
+          };
+        }
       }
     }
   }

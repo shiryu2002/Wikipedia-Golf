@@ -26,12 +26,14 @@ body {
     rgb(var(--background-start-rgb));
 }
 
+.article-content a,
 #articleContent a {
-  color: #4299e1;
+  color: #2563eb;
 }
 
+.article-content a:hover,
 #articleContent a:hover {
-  color: #2b6cb0;
+  color: #1d4ed8;
 }
 
 #articleContent2 a {
@@ -44,3 +46,95 @@ body {
   justify-content: center;
   align-items: center;
 } */
+
+.article-content {
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 640px) {
+  .article-content {
+    font-size: 1rem;
+  }
+}
+
+.article-content h1,
+.article-content h2,
+.article-content h3,
+.article-content h4,
+.article-content h5,
+.article-content h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.article-content h1 {
+  font-size: 1.5rem;
+}
+
+.article-content h2 {
+  font-size: 1.375rem;
+}
+
+.article-content h3 {
+  font-size: 1.25rem;
+}
+
+.article-content p,
+.article-content ul,
+.article-content ol,
+.article-content blockquote {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.article-content ul,
+.article-content ol {
+  padding-left: 1.5rem;
+}
+
+.article-content blockquote {
+  border-left: 4px solid #e2e8f0;
+  padding-left: 1rem;
+  color: #475569;
+  font-style: italic;
+}
+
+.article-content img,
+.article-content video,
+.article-content iframe {
+  max-width: 100%;
+  height: auto;
+}
+
+.article-content table {
+  width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.article-content table th,
+.article-content table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.article-content pre {
+  overflow-x: auto;
+  padding: 1rem;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.article-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
