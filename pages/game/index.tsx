@@ -14,7 +14,13 @@ import {
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
 
-type StartMode = "random" | "daily";
+type StartMode = "random" | "daily" | "custom";
+
+type StartOptions = {
+  startTitle?: string;
+  goalTitle?: string;
+  locale?: "en" | "ja";
+};
 
 type GoalDetailsCacheEntry = {
   html: string;
@@ -83,11 +89,13 @@ export default function GamePage() {
   const populateGoalDetails = async (options: {
     title: string;
     pageId?: number;
+    localeOverride?: "en" | "ja";
   }) => {
+    const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
     const cacheKey = options.pageId !== undefined
-      ? `${locale}:goal:id:${options.pageId}`
-      : `${locale}:goal:title:${options.title}`;
+      ? `${activeLocale}:goal:id:${options.pageId}`
+      : `${activeLocale}:goal:title:${options.title}`;
 
     const cached = goalDetailsCacheRef.current.get(cacheKey);
     if (cached) {
@@ -98,12 +106,12 @@ export default function GamePage() {
     }
 
     const goalUrl = options.pageId !== undefined
-      ? `https://${locale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
-      : `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
+      ? `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
+      : `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
 
     try {
       const [refResult, parseResult] = await Promise.all([
-        countReferer(options.title, locale),
+        countReferer(options.title, activeLocale),
         fetch(goalUrl).then((response) => {
           if (!response.ok) {
             throw new Error(`Failed to fetch goal article for ${options.title}`);
@@ -125,9 +133,9 @@ export default function GamePage() {
       };
 
       goalDetailsCacheRef.current.set(cacheKey, entry);
-      goalDetailsCacheRef.current.set(`${locale}:goal:title:${options.title}`, entry);
+      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${options.title}`, entry);
       if (resolvedPageId !== undefined) {
-        goalDetailsCacheRef.current.set(`${locale}:goal:id:${resolvedPageId}`, entry);
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedPageId}`, entry);
       }
 
       setNumOfReferer(entry.numOfRef);
@@ -317,7 +325,7 @@ export default function GamePage() {
     setTitle(previous.title);
   };
 
-  const start = async (mode: StartMode = "random") => {
+  const start = async (mode: StartMode = "random", options?: StartOptions) => {
     if (stroke > 0) {
       const shouldRestart = window.confirm("別のお題でやり直しますか？");
       if (!shouldRestart) return;
@@ -327,6 +335,7 @@ export default function GamePage() {
     setHintModal(false);
     setStroke(-1);
     setHistory([]);
+    setGoal("");
     setGoalArticle("");
     setIsGoalDetailsView(false);
     setIsDailyStartup(mode === "daily");
@@ -367,10 +376,49 @@ export default function GamePage() {
       );
     }
 
+    if (mode === "custom" && options) {
+      const targetLocale = options.locale ?? locale;
+      if (targetLocale !== locale) {
+        setLocale(targetLocale);
+      }
+
+      if (!options.startTitle || !options.goalTitle) {
+        console.warn("カスタムお題の指定が不足しています。ランダムお題を開始します。");
+      } else {
+        setIsDailyMode(false);
+        setIsDailyStartup(false);
+        setGameState("playing");
+        setTitle(options.startTitle);
+        setIsGoalLoading(true);
+        try {
+          await populateGoalDetails({
+            title: options.goalTitle,
+            localeOverride: targetLocale,
+          });
+        } catch (error) {
+          console.error("カスタムゴールの取得に失敗しました", error);
+        } finally {
+          setIsGoalLoading(false);
+        }
+        return;
+      }
+    }
+
     setIsDailyMode(false);
     setIsDailyStartup(false);
     await pickStart();
     await getGoal();
+  };
+
+  const decodeQueryParam = (value: string | string[] | undefined) => {
+    if (value === undefined) return undefined;
+    const resolved = Array.isArray(value) ? value[0] : value;
+    if (resolved === undefined) return undefined;
+    try {
+      return decodeURIComponent(resolved.replace(/\+/g, "%20"));
+    } catch {
+      return resolved;
+    }
   };
 
   useEffect(() => {
@@ -400,18 +448,35 @@ export default function GamePage() {
     if (!router.isReady || autoStartRef.current) {
       return;
     }
-    const startParam = router.query.start;
-    const resolvedMode: StartMode | null =
-      typeof startParam === "string" &&
-        (startParam === "daily" || startParam === "random")
-        ? startParam
-        : null;
+    const startParam = decodeQueryParam(router.query.start);
+    const startTitleParam = decodeQueryParam(router.query.startTitle);
+    const goalTitleParam = decodeQueryParam(router.query.goalTitle);
+    const localeParam = decodeQueryParam(router.query.locale);
+
+    let resolvedMode: StartMode | null = null;
+    let startOptions: StartOptions | undefined;
+
+    if (startParam === "daily" || startParam === "random") {
+      resolvedMode = startParam;
+    } else if (startParam === "custom" || (startTitleParam && goalTitleParam)) {
+      resolvedMode = "custom";
+      startOptions = {
+        startTitle: startTitleParam ?? undefined,
+        goalTitle: goalTitleParam ?? undefined,
+        locale: localeParam === "en" ? "en" : localeParam === "ja" ? "ja" : undefined,
+      };
+      if (!startOptions.startTitle || !startOptions.goalTitle) {
+        resolvedMode = null;
+        startOptions = undefined;
+      }
+    }
+
     if (resolvedMode) {
       autoStartRef.current = true;
-      void start(resolvedMode);
+      void start(resolvedMode, startOptions);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.query.start]);
+  }, [router.isReady, router.query.start, router.query.startTitle, router.query.goalTitle, router.query.locale]);
 
   const activeArticleHtml = isGoalDetailsView ? goalArticle : content;
   const isPrimaryArticleLoading = isGoalDetailsView ? isGoalLoading : isLoading;
@@ -529,6 +594,7 @@ export default function GamePage() {
             history={history}
             goal={goal}
             isDailyMode={isDailyMode}
+            locale={locale}
           />
         </div>
       </header>

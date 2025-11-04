@@ -62,7 +62,7 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+            <div className="hidden md:flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
               <Link
                 className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto"
                 href="/game?start=daily"
@@ -80,16 +80,14 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-10 sm:px-6 sm:py-12">
+      <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-4 sm:px-6 sm:py-12">
         <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <div className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-8 text-white shadow-2xl">
             <p className="text-sm text-white/70">
               今日のお題
             </p>
-            <h2 className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">
-              ゴール: {dailyGoalTitle}
-            </h2>
             <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">スタート: {dailyStartTitle}</p>
+            <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">ゴール: {dailyGoalTitle}</p>
             <p className="mt-4 text-sm text-white/80">{dailyGoalDate} のチャレンジ</p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
@@ -102,7 +100,7 @@ export default function Home() {
                 className="inline-flex w-full items-center justify-center rounded-full border border-white/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
                 href="/game?start=random"
               >
-                ランダムに挑戦
+                ランダムなお題に挑戦
               </Link>
             </div>
           </div>
@@ -154,18 +152,6 @@ export default function Home() {
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur">
-            <h3 className="text-lg font-semibold">今日は何の日？</h3>
-            <ul className="mt-4 space-y-3 text-sm text-slate-200">
-              <li>伊能忠敬が日本初の実測地図を完成</li>
-              <li>ウィリアム・G・モーガンがバレーボールを考案 (1895年)</li>
-              <li>ミュンヘン一揆が未遂に終わる (1923年)</li>
-            </ul>
-            <p className="mt-3 text-xs text-blue-100 uppercase tracking-[0.25em]">
-              Wikipedia Style Archive
-            </p>
-          </div>
-
           <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
             <h2 className="text-2xl font-semibold">ゲームの魅力</h2>
             <ul className="mt-6 space-y-4 text-sm text-slate-200">
