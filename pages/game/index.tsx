@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useRouter } from "next/router";
 
@@ -52,6 +52,19 @@ export default function GamePage() {
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
+
+  const handleLinkClick = useCallback((event: MouseEvent) => {
+    event.preventDefault();
+    if (isGoalDetailsView) {
+      return;
+    }
+
+    const anchor = event.currentTarget as HTMLAnchorElement | null;
+    const title = anchor?.getAttribute("title");
+    if (title) {
+      setTitle(title);
+    }
+  }, [isGoalDetailsView]);
 
   const pickStart = async () => {
     try {
@@ -175,17 +188,51 @@ export default function GamePage() {
   }, [title]);
 
   useEffect(() => {
-    const links = document.querySelectorAll("#articleContent a");
+    const links = document.querySelectorAll<HTMLAnchorElement>("#articleContent a");
+
     links.forEach((link) => {
-      link.addEventListener("click", handleLinkClick);
+      link.addEventListener("click", handleLinkClick as EventListener);
+
+      if (isGoalDetailsView) {
+        if (link.dataset.goalViewDisabled !== "true") {
+          const currentTabIndex = link.getAttribute("tabindex");
+          if (currentTabIndex !== null) {
+            link.dataset.goalPrevTabindex = currentTabIndex;
+          }
+        }
+        link.dataset.goalViewDisabled = "true";
+        link.setAttribute("aria-disabled", "true");
+        link.setAttribute("tabindex", "-1");
+      } else if (link.dataset.goalViewDisabled === "true") {
+        link.removeAttribute("aria-disabled");
+        const previousTabIndex = link.dataset.goalPrevTabindex;
+        if (previousTabIndex !== undefined) {
+          link.setAttribute("tabindex", previousTabIndex);
+        } else {
+          link.removeAttribute("tabindex");
+        }
+        delete link.dataset.goalPrevTabindex;
+        delete link.dataset.goalViewDisabled;
+      }
     });
 
     return () => {
       links.forEach((link) => {
-        link.removeEventListener("click", handleLinkClick);
+        link.removeEventListener("click", handleLinkClick as EventListener);
+        if (link.dataset.goalViewDisabled === "true") {
+          link.removeAttribute("aria-disabled");
+          const previousTabIndex = link.dataset.goalPrevTabindex;
+          if (previousTabIndex !== undefined) {
+            link.setAttribute("tabindex", previousTabIndex);
+          } else {
+            link.removeAttribute("tabindex");
+          }
+          delete link.dataset.goalPrevTabindex;
+          delete link.dataset.goalViewDisabled;
+        }
       });
     };
-  }, [content, goalArticle, isGoalDetailsView]);
+  }, [content, goalArticle, handleLinkClick, isGoalDetailsView]);
 
   const applyArticleContent = (
     articleTitle: string,
@@ -255,13 +302,6 @@ export default function GamePage() {
     }
   };
 
-  const handleLinkClick = (event: any) => {
-    event.preventDefault();
-    const title = event.target.getAttribute("title");
-    if (title) {
-      setTitle(title);
-    }
-  };
 
   const handleBackClick = () => {
     if (history.length <= 1) return;
@@ -488,6 +528,7 @@ export default function GamePage() {
             stroke={stroke}
             history={history}
             goal={goal}
+            isDailyMode={isDailyMode}
           />
         </div>
       </header>

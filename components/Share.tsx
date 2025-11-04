@@ -8,6 +8,7 @@ interface ShareModalProps {
   stroke: number;
   history: { title: string; url: string; stroke: number }[];
   goal: string;
+  isDailyMode: boolean;
 }
 
 Modal.setAppElement("#__next");
@@ -36,6 +37,7 @@ export const ShareModal = ({
   stroke,
   history,
   goal,
+  isDailyMode,
 }: ShareModalProps) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -45,7 +47,14 @@ export const ShareModal = ({
     .toISOString()
     .slice(0, 10)
     .replace(/-/g, "_")}`;
-  const shareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！\n${shareUrl}\n#WikipediaGolf #${shareDateTag}`;
+  const baseShareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！`;
+  const shareTagLine = isDailyMode
+    ? `#WikipediaGolf #${shareDateTag}`
+    : "#WikipediaGolf";
+  const shareText = `${baseShareText}\n${shareUrl}\n${shareTagLine}`;
+  const hashtags = isDailyMode
+    ? ["WikipediaGolf", shareDateTag]
+    : ["WikipediaGolf"];
 
   const handleCopy = async () => {
     try {
@@ -124,7 +133,7 @@ export const ShareModal = ({
           <TwitterShareButton
             url={shareUrl}
             title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！`}
-            hashtags={["WikipediaGolf", shareDateTag]}
+            hashtags={hashtags}
           >
             <div className="group flex w-full items-center justify-center gap-3 rounded-full bg-blue-500/90 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto sm:self-start">
               <XIcon size={28} round={true} />

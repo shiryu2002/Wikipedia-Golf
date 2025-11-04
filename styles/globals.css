@@ -36,6 +36,18 @@ body {
   color: #1d4ed8;
 }
 
+.article-content a[aria-disabled="true"],
+#articleContent a[aria-disabled="true"] {
+  color: #0f172a;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.article-content a[aria-disabled="true"]:hover,
+#articleContent a[aria-disabled="true"]:hover {
+  color: #0f172a;
+}
+
 #articleContent2 a {
   /* リンクを踏めないように */
   pointer-events: none;

@@ -2,4 +2,4 @@
 
 ウィキペディアのゴルフができるサイト
 
-かめさんガンバ
+[ここから遊べるよ](https://wikipedia-golf.vercel.app/)
