@@ -64,6 +64,14 @@ body {
   line-height: 1.7;
   color: #0f172a;
   overflow-wrap: anywhere;
+  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+}
+
+.article-content * {
+  box-sizing: border-box;
+  max-width: 100%;
 }
 
 @media (min-width: 640px) {
@@ -125,11 +133,24 @@ body {
 }
 
 .article-content table {
-  width: 100%;
+  width: 100% !important;
   border-collapse: collapse;
   display: block;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.article-content .navbox,
+.article-content table.navbox {
+  display: block;
+  width: 100% !important;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.article-content .nowraplinks,
+.article-content .nowraplinks a {
+  white-space: normal !important;
 }
 
 .article-content table th,

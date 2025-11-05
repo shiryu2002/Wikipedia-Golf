@@ -761,8 +761,8 @@ export default function GamePage() {
           </div>
         </aside>
 
-        <section className="flex-1">
-          <div className="rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
+        <section className="flex-1 min-w-0">
+          <div className="min-w-0 rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
               <div className="max-w-2xl">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
