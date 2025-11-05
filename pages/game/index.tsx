@@ -7,10 +7,12 @@ import { ShareModal } from "@/components/Share";
 import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
 import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
 import Image from "next/image";
+import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
-  DailyChallenge,
-  fetchDailyChallenge,
-} from "@/useCase/dailyChallenge";
+  clearExpiredDailyChallengeCache,
+  loadDailyChallengeWithCache,
+  readCachedDailyChallenge,
+} from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
 
@@ -33,9 +35,7 @@ export default function GamePage() {
   const autoStartRef = useRef(false);
   const [title, setTitle] = useState<string>("");
   const [locale, setLocale] = useState<"en" | "ja">("ja");
-  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(
-    null
-  );
+  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [content, setContent] = useState("");
   const [history, setHistory] = useState<
     { title: string; url: string; stroke: number }[]
@@ -58,6 +58,16 @@ export default function GamePage() {
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
+
+  const handleReturnToTitle = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const confirmed = window.confirm("タイトル画面に戻りますか？");
+    if (confirmed) {
+      void router.push("/");
+    }
+  }, [router]);
 
   const handleLinkClick = useCallback((event: MouseEvent) => {
     event.preventDefault();
@@ -178,7 +188,7 @@ export default function GamePage() {
         return dailyChallenge;
       }
 
-      const challenge = await fetchDailyChallenge(locale);
+      const challenge = await loadDailyChallengeWithCache(locale);
       setDailyChallenge(challenge);
       return challenge;
     } catch (error) {
@@ -456,10 +466,18 @@ export default function GamePage() {
   };
 
   useEffect(() => {
+    clearExpiredDailyChallengeCache();
+    const cached = readCachedDailyChallenge(locale);
+    if (cached) {
+      setDailyChallenge(cached);
+    }
+  }, [locale]);
+
+  useEffect(() => {
     let isCancelled = false;
     const loadChallenge = async () => {
       try {
-        const challenge = await fetchDailyChallenge(locale);
+        const challenge = await loadDailyChallengeWithCache(locale);
         if (!isCancelled) {
           setDailyChallenge(challenge);
         }
@@ -539,7 +557,11 @@ export default function GamePage() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="hidden items-center gap-4 sm:flex sm:gap-5">
+            <button
+              type="button"
+              onClick={handleReturnToTitle}
+              className="hidden items-center gap-4 rounded-2xl bg-transparent p-0 text-left text-white transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:flex sm:gap-5"
+            >
               <Image
                 src="/w2.png"
                 alt="Wikipedia Golf アイコン"
@@ -551,7 +573,7 @@ export default function GamePage() {
               <h1 className="text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
                 Wikipedia Golf
               </h1>
-            </div>
+            </button>
             <div className="flex w-full flex-col gap-3 sm:flex-1">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start sm:gap-4">
                 <div className="flex w-full max-w-full gap-4 pr-4 sm:hidden">

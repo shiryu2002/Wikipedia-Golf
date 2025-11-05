@@ -3,10 +3,12 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/router";
 
+import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
-  DailyChallenge,
-  fetchDailyChallenge,
-} from "@/useCase/dailyChallenge";
+  clearExpiredDailyChallengeCache,
+  loadDailyChallengeWithCache,
+  readCachedDailyChallenge,
+} from "@/useCase/dailyChallengeCache";
 
 const useArticleSuggestions = (
   query: string,
@@ -187,9 +189,18 @@ export default function Home() {
 
   useEffect(() => {
     let isCancelled = false;
+    clearExpiredDailyChallengeCache();
+
+    if (typeof window !== "undefined" && !isCancelled) {
+      const cached = readCachedDailyChallenge("ja");
+      if (cached) {
+        setDailyChallenge(cached);
+      }
+    }
+
     const loadChallenge = async () => {
       try {
-        const challenge = await fetchDailyChallenge("ja");
+        const challenge = await loadDailyChallengeWithCache("ja");
         if (!isCancelled) {
           setDailyChallenge(challenge);
         }
@@ -353,9 +364,18 @@ export default function Home() {
             </ul>
           </article>
           <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
-            <h2 className="text-2xl font-semibold">広告募集中</h2>
+            <h2 className="text-2xl font-semibold">バグ報告はこちら</h2>
             <ul className="mt-6 space-y-4 text-sm text-slate-200">
-              <li></li>
+              <li>
+                <a
+                  href="https://github.com/shiryu2002/Wikipedia-Golf/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-300 hover:underline hover:text-blue-400 text-xl"
+                >
+                  GitHub Issues でバグ報告・要望を送る
+                </a>
+              </li>
             </ul>
           </article>
         </section>
