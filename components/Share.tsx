@@ -30,6 +30,7 @@ const customStyles = {
   overlay: {
     backgroundColor: "rgba(2, 6, 23, 0.78)",
     backdropFilter: "blur(6px)",
+    zIndex: 9999,
   },
 };
 
