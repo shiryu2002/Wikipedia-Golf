@@ -7,14 +7,22 @@ import { ShareModal } from "@/components/Share";
 import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
 import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
 import Image from "next/image";
+import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
-  DailyChallenge,
-  fetchDailyChallenge,
-} from "@/useCase/dailyChallenge";
+  clearExpiredDailyChallengeCache,
+  loadDailyChallengeWithCache,
+  readCachedDailyChallenge,
+} from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
 
-type StartMode = "random" | "daily";
+type StartMode = "random" | "daily" | "custom";
+
+type StartOptions = {
+  startTitle?: string;
+  goalTitle?: string;
+  locale?: "en" | "ja";
+};
 
 type GoalDetailsCacheEntry = {
   html: string;
@@ -27,9 +35,7 @@ export default function GamePage() {
   const autoStartRef = useRef(false);
   const [title, setTitle] = useState<string>("");
   const [locale, setLocale] = useState<"en" | "ja">("ja");
-  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(
-    null
-  );
+  const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [content, setContent] = useState("");
   const [history, setHistory] = useState<
     { title: string; url: string; stroke: number }[]
@@ -53,6 +59,16 @@ export default function GamePage() {
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
 
+  const handleReturnToTitle = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const confirmed = window.confirm("タイトル画面に戻りますか？");
+    if (confirmed) {
+      void router.push("/");
+    }
+  }, [router]);
+
   const handleLinkClick = useCallback((event: MouseEvent) => {
     event.preventDefault();
     if (isGoalDetailsView) {
@@ -66,7 +82,7 @@ export default function GamePage() {
     }
   }, [isGoalDetailsView]);
 
-  const pickStart = async () => {
+  const pickStart = async (): Promise<string | null> => {
     try {
       const response = await fetch(
         `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`
@@ -75,19 +91,23 @@ export default function GamePage() {
       const randomTitle = data.query.random[0].title;
       setTitle(randomTitle);
       setGameState("playing");
+      return randomTitle;
     } catch (error) {
       console.error("スタートページの取得に失敗しました", error);
+      return null;
     }
   };
 
   const populateGoalDetails = async (options: {
     title: string;
     pageId?: number;
+    localeOverride?: "en" | "ja";
   }) => {
+    const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
     const cacheKey = options.pageId !== undefined
-      ? `${locale}:goal:id:${options.pageId}`
-      : `${locale}:goal:title:${options.title}`;
+      ? `${activeLocale}:goal:id:${options.pageId}`
+      : `${activeLocale}:goal:title:${options.title}`;
 
     const cached = goalDetailsCacheRef.current.get(cacheKey);
     if (cached) {
@@ -98,12 +118,12 @@ export default function GamePage() {
     }
 
     const goalUrl = options.pageId !== undefined
-      ? `https://${locale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
-      : `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
+      ? `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
+      : `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
 
     try {
       const [refResult, parseResult] = await Promise.all([
-        countReferer(options.title, locale),
+        countReferer(options.title, activeLocale),
         fetch(goalUrl).then((response) => {
           if (!response.ok) {
             throw new Error(`Failed to fetch goal article for ${options.title}`);
@@ -125,9 +145,9 @@ export default function GamePage() {
       };
 
       goalDetailsCacheRef.current.set(cacheKey, entry);
-      goalDetailsCacheRef.current.set(`${locale}:goal:title:${options.title}`, entry);
+      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${options.title}`, entry);
       if (resolvedPageId !== undefined) {
-        goalDetailsCacheRef.current.set(`${locale}:goal:id:${resolvedPageId}`, entry);
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedPageId}`, entry);
       }
 
       setNumOfReferer(entry.numOfRef);
@@ -138,7 +158,7 @@ export default function GamePage() {
     }
   };
 
-  const getGoal = async () => {
+  const getGoal = async (): Promise<string | null> => {
     setIsDailyMode(false);
     setIsGoalLoading(true);
     try {
@@ -148,8 +168,10 @@ export default function GamePage() {
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
       await populateGoalDetails({ title: randomTitle });
+      return randomTitle;
     } catch (error) {
       console.error("ゴールページの取得に失敗しました", error);
+      return null;
     } finally {
       setIsGoalLoading(false);
     }
@@ -166,7 +188,7 @@ export default function GamePage() {
         return dailyChallenge;
       }
 
-      const challenge = await fetchDailyChallenge(locale);
+      const challenge = await loadDailyChallengeWithCache(locale);
       setDailyChallenge(challenge);
       return challenge;
     } catch (error) {
@@ -317,7 +339,7 @@ export default function GamePage() {
     setTitle(previous.title);
   };
 
-  const start = async (mode: StartMode = "random") => {
+  const start = async (mode: StartMode = "random", options?: StartOptions) => {
     if (stroke > 0) {
       const shouldRestart = window.confirm("別のお題でやり直しますか？");
       if (!shouldRestart) return;
@@ -327,6 +349,7 @@ export default function GamePage() {
     setHintModal(false);
     setStroke(-1);
     setHistory([]);
+    setGoal("");
     setGoalArticle("");
     setIsGoalDetailsView(false);
     setIsDailyStartup(mode === "daily");
@@ -367,17 +390,94 @@ export default function GamePage() {
       );
     }
 
+    const hasExplicitArticles = Boolean(options?.startTitle && options?.goalTitle);
+
+    if ((mode === "custom" || (mode === "random" && hasExplicitArticles)) && options) {
+      const targetLocale = options.locale ?? locale;
+      if (targetLocale !== locale) {
+        setLocale(targetLocale);
+      }
+
+      if (!options.startTitle || !options.goalTitle) {
+        console.warn("カスタムお題の指定が不足しています。ランダムお題を開始します。");
+      } else {
+        setIsDailyMode(false);
+        setIsDailyStartup(false);
+        setGameState("playing");
+        setTitle(options.startTitle);
+        setIsGoalLoading(true);
+        try {
+          await populateGoalDetails({
+            title: options.goalTitle,
+            localeOverride: targetLocale,
+          });
+        } catch (error) {
+          console.error("カスタムゴールの取得に失敗しました", error);
+        } finally {
+          setIsGoalLoading(false);
+        }
+
+        if (mode === "random") {
+          autoStartRef.current = true;
+          void router.replace({
+            pathname: router.pathname,
+            query: {
+              start: "random",
+              startTitle: options.startTitle,
+              goalTitle: options.goalTitle,
+              locale: targetLocale,
+            },
+          }, undefined, { shallow: true });
+        }
+        return;
+      }
+    }
+
     setIsDailyMode(false);
     setIsDailyStartup(false);
-    await pickStart();
-    await getGoal();
+    const [randomStartTitle, randomGoalTitle] = await Promise.all([
+      pickStart(),
+      getGoal(),
+    ]);
+
+    if (randomStartTitle && randomGoalTitle) {
+      autoStartRef.current = true;
+      void router.replace({
+        pathname: router.pathname,
+        query: {
+          start: "random",
+          startTitle: randomStartTitle,
+          goalTitle: randomGoalTitle,
+          locale,
+        },
+      }, undefined, { shallow: true });
+    }
   };
+
+  const decodeQueryParam = (value: string | string[] | undefined) => {
+    if (value === undefined) return undefined;
+    const resolved = Array.isArray(value) ? value[0] : value;
+    if (resolved === undefined) return undefined;
+    try {
+      return decodeURIComponent(resolved.replace(/\+/g, "%20"));
+    } catch {
+      return resolved;
+    }
+  };
+
+  useEffect(() => {
+    clearExpiredDailyChallengeCache();
+    const cached = readCachedDailyChallenge(locale);
+    if (cached) {
+      setDailyChallenge(cached);
+    }
+  }, [locale]);
 
   useEffect(() => {
     let isCancelled = false;
     const loadChallenge = async () => {
       try {
-        const challenge = await fetchDailyChallenge(locale);
+        const challenge = await loadDailyChallengeWithCache(locale);
         if (!isCancelled) {
           setDailyChallenge(challenge);
         }
@@ -400,18 +500,44 @@ export default function GamePage() {
     if (!router.isReady || autoStartRef.current) {
       return;
     }
-    const startParam = router.query.start;
-    const resolvedMode: StartMode | null =
-      typeof startParam === "string" &&
-        (startParam === "daily" || startParam === "random")
-        ? startParam
-        : null;
+    const startParam = decodeQueryParam(router.query.start);
+    const startTitleParam = decodeQueryParam(router.query.startTitle);
+    const goalTitleParam = decodeQueryParam(router.query.goalTitle);
+    const localeParam = decodeQueryParam(router.query.locale);
+
+    let resolvedMode: StartMode | null = null;
+    let startOptions: StartOptions | undefined;
+
+    if (startParam === "daily") {
+      resolvedMode = "daily";
+    } else if (startParam === "random" && startTitleParam && goalTitleParam) {
+      resolvedMode = "random";
+      startOptions = {
+        startTitle: startTitleParam,
+        goalTitle: goalTitleParam,
+        locale: localeParam === "en" ? "en" : localeParam === "ja" ? "ja" : undefined,
+      };
+    } else if (startParam === "random") {
+      resolvedMode = "random";
+    } else if (startParam === "custom" || (startTitleParam && goalTitleParam)) {
+      resolvedMode = "custom";
+      startOptions = {
+        startTitle: startTitleParam ?? undefined,
+        goalTitle: goalTitleParam ?? undefined,
+        locale: localeParam === "en" ? "en" : localeParam === "ja" ? "ja" : undefined,
+      };
+      if (!startOptions.startTitle || !startOptions.goalTitle) {
+        resolvedMode = null;
+        startOptions = undefined;
+      }
+    }
+
     if (resolvedMode) {
       autoStartRef.current = true;
-      void start(resolvedMode);
+      void start(resolvedMode, startOptions);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.query.start]);
+  }, [router.isReady, router.query.start, router.query.startTitle, router.query.goalTitle, router.query.locale]);
 
   const activeArticleHtml = isGoalDetailsView ? goalArticle : content;
   const isPrimaryArticleLoading = isGoalDetailsView ? isGoalLoading : isLoading;
@@ -431,7 +557,11 @@ export default function GamePage() {
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6 sm:px-6">
           <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="hidden items-center gap-4 sm:flex sm:gap-5">
+            <button
+              type="button"
+              onClick={handleReturnToTitle}
+              className="hidden items-center gap-4 rounded-2xl bg-transparent p-0 text-left text-white transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:flex sm:gap-5"
+            >
               <Image
                 src="/w2.png"
                 alt="Wikipedia Golf アイコン"
@@ -443,7 +573,7 @@ export default function GamePage() {
               <h1 className="text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
                 Wikipedia Golf
               </h1>
-            </div>
+            </button>
             <div className="flex w-full flex-col gap-3 sm:flex-1">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start sm:gap-4">
                 <div className="flex w-full max-w-full gap-4 pr-4 sm:hidden">
@@ -529,6 +659,7 @@ export default function GamePage() {
             history={history}
             goal={goal}
             isDailyMode={isDailyMode}
+            locale={locale}
           />
         </div>
       </header>

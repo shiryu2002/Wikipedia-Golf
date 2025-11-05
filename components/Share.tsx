@@ -9,6 +9,7 @@ interface ShareModalProps {
   history: { title: string; url: string; stroke: number }[];
   goal: string;
   isDailyMode: boolean;
+  locale: "en" | "ja";
 }
 
 Modal.setAppElement("#__next");
@@ -29,6 +30,7 @@ const customStyles = {
   overlay: {
     backgroundColor: "rgba(2, 6, 23, 0.78)",
     backdropFilter: "blur(6px)",
+    zIndex: 9999,
   },
 };
 
@@ -38,11 +40,27 @@ export const ShareModal = ({
   history,
   goal,
   isDailyMode,
+  locale,
 }: ShareModalProps) => {
   const [isCopied, setIsCopied] = useState(false);
 
   const startTitle = history.length > 0 ? history[0].title : "";
-  const shareUrl = "https://wikipedia-golf.vercel.app/";
+  const siteOrigin = "https://wikipedia-golf.vercel.app";
+  const defaultShareUrl = `${siteOrigin}/`;
+  const challengeShareUrl = !isDailyMode && startTitle && goal
+    ? (() => {
+      const params = new URLSearchParams({
+        start: "custom",
+        startTitle,
+        goalTitle: goal,
+      });
+      if (locale) {
+        params.set("locale", locale);
+      }
+      return `${siteOrigin}/game?${params.toString()}`;
+    })()
+    : null;
+  const shareUrl = challengeShareUrl ?? defaultShareUrl;
   const shareDateTag = `WikipediaGolf_${new Date()
     .toISOString()
     .slice(0, 10)
