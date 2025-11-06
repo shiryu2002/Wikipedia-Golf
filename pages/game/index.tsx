@@ -6,6 +6,7 @@ import { HintsModal } from "@/components/Hints";
 import { ShareModal } from "@/components/Share";
 import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
 import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
+import { Confetti } from "@/components/Confetti";
 import Image from "next/image";
 import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
@@ -828,6 +829,7 @@ export default function GamePage() {
         onClose={() => setHintModal(false)}
         hints={hints}
       />
+      <Confetti active={gameState === "gameover"} />
     </div>
   );
 }
