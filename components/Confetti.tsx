@@ -63,7 +63,7 @@ export function Confetti({ active }: ConfettiProps) {
       });
     }
 
-    let animationFrameId: number;
+    let animationFrameId: number | null = null;
     let startTime = Date.now();
     const duration = 5000; // 5 seconds
 
@@ -72,6 +72,7 @@ export function Confetti({ active }: ConfettiProps) {
       
       if (elapsed > duration) {
         // Stop animation after duration
+        animationFrameId = null;
         return;
       }
 
@@ -103,15 +104,26 @@ export function Confetti({ active }: ConfettiProps) {
 
     animate();
 
+    let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+      resizeTimeout = setTimeout(() => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }, 100);
     };
 
     window.addEventListener("resize", handleResize);
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
       window.removeEventListener("resize", handleResize);
     };
   }, [active]);
