@@ -48,18 +48,24 @@ export function Confetti({ active }: ConfettiProps) {
     const particles: Particle[] = [];
     const particleCount = 150;
 
-    // Create particles
+    // Create particles bursting from center
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    
     for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const velocity = Math.random() * 15 + 5; // Random velocity between 5-20
+      
       particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height - canvas.height,
-        vx: (Math.random() - 0.5) * 6,
-        vy: Math.random() * 3 + 2,
+        x: centerX,
+        y: centerY,
+        vx: Math.cos(angle) * velocity,
+        vy: Math.sin(angle) * velocity,
         color: colors[Math.floor(Math.random() * colors.length)],
         size: Math.random() * 8 + 4,
         rotation: Math.random() * 360,
         rotationSpeed: (Math.random() - 0.5) * 10,
-        gravity: 0.15,
+        gravity: 0.3,
       });
     }
 
@@ -133,7 +139,7 @@ export function Confetti({ active }: ConfettiProps) {
   return (
     <canvas
       ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-50"
+      className="pointer-events-none fixed inset-0 z-[10000]"
       style={{ width: "100%", height: "100%" }}
     />
   );
