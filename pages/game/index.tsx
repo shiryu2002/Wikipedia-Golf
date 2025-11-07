@@ -211,7 +211,7 @@ export default function GamePage() {
       setGameState("gameover");
       // Stop timer when goal is reached
       if (isTimeAttackMode && startTime !== null) {
-        setElapsedTime(Date.now() - startTime);
+        setElapsedTime(performance.now() - startTime);
       }
     }
   };
@@ -229,7 +229,7 @@ export default function GamePage() {
     }
 
     const intervalId = setInterval(() => {
-      setElapsedTime(Date.now() - startTime);
+      setElapsedTime(performance.now() - startTime);
     }, 500); // Update every 500ms for performance
 
     return () => clearInterval(intervalId);
@@ -399,7 +399,7 @@ export default function GamePage() {
         
         // Start timer for time attack mode
         if (mode === "daily-ta") {
-          setStartTime(Date.now());
+          setStartTime(performance.now());
         }
 
         void (async () => {
