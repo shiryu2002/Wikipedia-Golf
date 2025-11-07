@@ -16,10 +16,7 @@ import {
 } from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
-
-const formatTime = (milliseconds: number): string => {
-  return (milliseconds / 1000).toFixed(1);
-};
+import { formatTime } from "@/utils/time";
 
 const isDailyGameMode = (mode: string): boolean => {
   return mode === "daily" || mode === "daily-ta";

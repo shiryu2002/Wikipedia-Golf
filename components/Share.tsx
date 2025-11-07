@@ -2,10 +2,7 @@ import { useState } from "react";
 
 import Modal from "react-modal";
 import { TwitterShareButton, XIcon } from "react-share";
-
-const formatTime = (milliseconds: number): string => {
-  return (milliseconds / 1000).toFixed(1);
-};
+import { formatTime } from "@/utils/time";
 
 interface ShareModalProps {
   gameState: "idle" | "playing" | "gameover";
