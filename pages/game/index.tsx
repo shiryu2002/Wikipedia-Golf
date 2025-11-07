@@ -17,7 +17,7 @@ import {
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
 
-type StartMode = "random" | "daily" | "custom";
+type StartMode = "random" | "daily" | "daily-ta" | "custom";
 
 type StartOptions = {
   startTitle?: string;
@@ -54,6 +54,9 @@ export default function GamePage() {
   const [hints, setHints] = useState<string[]>([]);
   const [isHintModalOpen, setHintModal] = useState(false);
   const [isDailyMode, setIsDailyMode] = useState(false);
+  const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
   const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
   const ignoreNextContentRef = useRef(false);
@@ -201,6 +204,10 @@ export default function GamePage() {
   const checkIfGameOver = (title: string) => {
     if (title === goal) {
       setGameState("gameover");
+      // Stop timer when goal is reached
+      if (isTimeAttackMode && startTime !== null) {
+        setElapsedTime(Date.now() - startTime);
+      }
     }
   };
 
@@ -209,6 +216,19 @@ export default function GamePage() {
     fetchTitle(title);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title]);
+
+  // Timer update effect
+  useEffect(() => {
+    if (!isTimeAttackMode || gameState !== "playing" || startTime === null) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setElapsedTime(Date.now() - startTime);
+    }, 100); // Update every 100ms for smoother display
+
+    return () => clearInterval(intervalId);
+  }, [isTimeAttackMode, gameState, startTime]);
 
   useEffect(() => {
     const links = document.querySelectorAll<HTMLAnchorElement>("#articleContent a");
@@ -353,9 +373,14 @@ export default function GamePage() {
     setGoal("");
     setGoalArticle("");
     setIsGoalDetailsView(false);
-    setIsDailyStartup(mode === "daily");
+    setIsDailyStartup(mode === "daily" || mode === "daily-ta");
+    
+    // Reset timer state
+    setIsTimeAttackMode(mode === "daily-ta");
+    setStartTime(null);
+    setElapsedTime(0);
 
-    if (mode === "daily") {
+    if (mode === "daily" || mode === "daily-ta") {
       ignoreNextContentRef.current = true;
       setContent("");
       const challenge = await resolveDailyChallenge();
@@ -366,6 +391,11 @@ export default function GamePage() {
         setIsDailyMode(true);
         setGameState("playing");
         setTitle(challenge.start.title);
+        
+        // Start timer for time attack mode
+        if (mode === "daily-ta") {
+          setStartTime(Date.now());
+        }
 
         void (async () => {
           setIsGoalLoading(true);
@@ -511,6 +541,8 @@ export default function GamePage() {
 
     if (startParam === "daily") {
       resolvedMode = "daily";
+    } else if (startParam === "daily-ta") {
+      resolvedMode = "daily-ta";
     } else if (startParam === "random" && startTitleParam && goalTitleParam) {
       resolvedMode = "random";
       startOptions = {
@@ -595,13 +627,21 @@ export default function GamePage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex w-full justify-end sm:w-auto sm:justify-start sm:ml-auto">
+                <div className="flex w-full justify-end gap-4 sm:w-auto sm:justify-start sm:ml-auto">
                   <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
                     打数:
                     <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
                       {stroke === -1 ? "0" : stroke}
                     </span>
                   </p>
+                  {isTimeAttackMode && (
+                    <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
+                      タイム:
+                      <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
+                        {(elapsedTime / 1000).toFixed(1)}s
+                      </span>
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:gap-3 sm:justify-end">
@@ -660,6 +700,8 @@ export default function GamePage() {
             history={history}
             goal={goal}
             isDailyMode={isDailyMode}
+            isTimeAttackMode={isTimeAttackMode}
+            elapsedTime={elapsedTime}
             locale={locale}
           />
         </div>
@@ -726,12 +768,12 @@ export default function GamePage() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">辿ったルート</h2>
               <button
-                className={`text-xs transition ${history.length <= 1
+                className={`text-xs transition ${history.length <= 1 || isTimeAttackMode
                   ? "cursor-not-allowed text-slate-500"
                   : "text-blue-200 hover:text-blue-100"
                   }`}
                 onClick={handleBackClick}
-                disabled={history.length <= 1}
+                disabled={history.length <= 1 || isTimeAttackMode}
               >
                 1手戻す
               </button>
@@ -823,6 +865,7 @@ export default function GamePage() {
         onClose={() => setHistoryModalOpen(false)}
         onBack={handleBackClick}
         history={history}
+        isTimeAttackMode={isTimeAttackMode}
       />
       <MobileHintsModal
         isOpen={isHintModalOpen}

@@ -11,15 +11,16 @@ type MobileHistoryModalProps = {
     onClose: () => void;
     onBack: () => void;
     history: HistoryEntry[];
+    isTimeAttackMode: boolean;
 };
 
 export const MobileHistoryModal = memo(
-    ({ isOpen, onClose, onBack, history }: MobileHistoryModalProps) => {
+    ({ isOpen, onClose, onBack, history, isTimeAttackMode }: MobileHistoryModalProps) => {
         if (!isOpen) {
             return null;
         }
 
-        const canUndo = history.length > 1;
+        const canUndo = history.length > 1 && !isTimeAttackMode;
 
         return (
             <div

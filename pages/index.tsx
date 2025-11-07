@@ -222,6 +222,7 @@ export default function Home() {
   const dailyGoalTitle = dailyChallenge?.goal.title ?? "読み込み中";
   const dailyStartTitle = dailyChallenge?.start.title ?? "読み込み中";
   const dailyGoalDate = dailyChallenge?.date ?? new Date().toISOString().slice(0, 10);
+  const isDailyChallengeLoaded = Boolean(dailyChallenge?.goal.title && dailyChallenge?.start.title);
   const isCustomSubmitDisabled = isSubmittingCustom
     || !customStartTitle.trim()
     || !customGoalTitle.trim();
@@ -286,10 +287,34 @@ export default function Home() {
             <p className="mt-4 text-sm text-white/80">{dailyGoalDate} のチャレンジ</p>
             <div className="mt-8 flex flex-wrap gap-4">
               <Link
-                className="inline-flex w-full items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-slate-900 shadow transition hover:bg-slate-100 sm:w-auto"
-                href="/game?start=daily"
+                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold shadow transition sm:w-auto ${
+                  isDailyChallengeLoaded
+                    ? "bg-white text-slate-900 hover:bg-slate-100"
+                    : "cursor-not-allowed bg-white/40 text-slate-500"
+                }`}
+                href={isDailyChallengeLoaded ? "/game?start=daily" : "#"}
+                onClick={(e) => {
+                  if (!isDailyChallengeLoaded) {
+                    e.preventDefault();
+                  }
+                }}
               >
                 このお題でスタート
+              </Link>
+              <Link
+                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold shadow transition sm:w-auto ${
+                  isDailyChallengeLoaded
+                    ? "border border-blue-300/60 bg-blue-500 text-white hover:bg-blue-400"
+                    : "cursor-not-allowed border border-white/20 bg-white/20 text-slate-400"
+                }`}
+                href={isDailyChallengeLoaded ? "/game?start=daily-ta" : "#"}
+                onClick={(e) => {
+                  if (!isDailyChallengeLoaded) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                デイリー(TA)に挑戦
               </Link>
               <Link
                 className="inline-flex w-full items-center justify-center rounded-full border border-white/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
