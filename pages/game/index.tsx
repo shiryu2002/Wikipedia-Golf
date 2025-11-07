@@ -230,7 +230,7 @@ export default function GamePage() {
 
     const intervalId = setInterval(() => {
       setElapsedTime(performance.now() - startTime);
-    }, 500); // Update every 500ms for performance
+    }, 1000); // Update every 1 second
 
     return () => clearInterval(intervalId);
   }, [isTimeAttackMode, gameState, startTime]);
