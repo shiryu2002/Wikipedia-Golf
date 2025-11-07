@@ -3,6 +3,10 @@ import { useState } from "react";
 import Modal from "react-modal";
 import { TwitterShareButton, XIcon } from "react-share";
 
+const formatTime = (milliseconds: number): string => {
+  return (milliseconds / 1000).toFixed(1);
+};
+
 interface ShareModalProps {
   gameState: "idle" | "playing" | "gameover";
   stroke: number;
@@ -69,7 +73,8 @@ export const ShareModal = ({
     .toISOString()
     .slice(0, 10)
     .replace(/-/g, "_")}`;
-  const timeText = isTimeAttackMode ? ` タイム: ${(elapsedTime / 1000).toFixed(1)}秒` : "";
+  const formattedTime = formatTime(elapsedTime);
+  const timeText = isTimeAttackMode ? ` タイム: ${formattedTime}秒` : "";
   const baseShareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！${timeText}`;
   const shareTagLine = isDailyMode
     ? `#WikipediaGolf #${shareDateTag}`
@@ -140,7 +145,7 @@ export const ShareModal = ({
           </div>
           {isTimeAttackMode && (
             <div className="mt-3 flex items-baseline gap-3">
-              <span className="text-3xl font-bold text-blue-200">{(elapsedTime / 1000).toFixed(1)}</span>
+              <span className="text-3xl font-bold text-blue-200">{formattedTime}</span>
               <span className="text-md text-slate-300">秒</span>
             </div>
           )}

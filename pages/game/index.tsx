@@ -17,6 +17,14 @@ import {
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
 
+const formatTime = (milliseconds: number): string => {
+  return (milliseconds / 1000).toFixed(1);
+};
+
+const isDailyGameMode = (mode: string): boolean => {
+  return mode === "daily" || mode === "daily-ta";
+};
+
 type StartMode = "random" | "daily" | "daily-ta" | "custom";
 
 type StartOptions = {
@@ -225,7 +233,7 @@ export default function GamePage() {
 
     const intervalId = setInterval(() => {
       setElapsedTime(Date.now() - startTime);
-    }, 100); // Update every 100ms for smoother display
+    }, 500); // Update every 500ms for performance
 
     return () => clearInterval(intervalId);
   }, [isTimeAttackMode, gameState, startTime]);
@@ -373,14 +381,14 @@ export default function GamePage() {
     setGoal("");
     setGoalArticle("");
     setIsGoalDetailsView(false);
-    setIsDailyStartup(mode === "daily" || mode === "daily-ta");
+    setIsDailyStartup(isDailyGameMode(mode));
     
     // Reset timer state
     setIsTimeAttackMode(mode === "daily-ta");
     setStartTime(null);
     setElapsedTime(0);
 
-    if (mode === "daily" || mode === "daily-ta") {
+    if (isDailyGameMode(mode)) {
       ignoreNextContentRef.current = true;
       setContent("");
       const challenge = await resolveDailyChallenge();
@@ -638,7 +646,7 @@ export default function GamePage() {
                     <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
                       タイム:
                       <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
-                        {(elapsedTime / 1000).toFixed(1)}s
+                        {formatTime(elapsedTime)}s
                       </span>
                     </p>
                   )}
