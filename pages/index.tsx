@@ -88,6 +88,7 @@ export default function Home() {
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
   const [showStartSuggestions, setShowStartSuggestions] = useState(false);
   const [showGoalSuggestions, setShowGoalSuggestions] = useState(false);
+  const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
 
   const {
     suggestions: startSuggestions,
@@ -285,50 +286,53 @@ export default function Home() {
             <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">スタート: {dailyStartTitle}</p>
             <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">ゴール: {dailyGoalTitle}</p>
             <p className="mt-4 text-sm text-white/80">{dailyGoalDate} のチャレンジ</p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              <Link
-                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold shadow transition sm:w-auto ${
-                  isDailyChallengeLoaded
-                    ? "bg-white text-slate-900 hover:bg-slate-100"
-                    : "cursor-not-allowed bg-white/40 text-slate-500"
-                }`}
-                href={isDailyChallengeLoaded ? "/game?start=daily" : "#"}
-                onClick={(e) => {
-                  if (!isDailyChallengeLoaded) {
-                    e.preventDefault();
-                  }
-                }}
-              >
-                このお題でスタート
-              </Link>
-              <Link
-                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 text-sm font-semibold shadow transition sm:w-auto ${
-                  isDailyChallengeLoaded
-                    ? "border border-blue-300/60 bg-blue-500 text-white hover:bg-blue-400"
-                    : "cursor-not-allowed border border-white/20 bg-white/20 text-slate-400"
-                }`}
-                href={isDailyChallengeLoaded ? "/game?start=daily-ta" : "#"}
-                onClick={(e) => {
-                  if (!isDailyChallengeLoaded) {
-                    e.preventDefault();
-                  }
-                }}
-              >
-                デイリー(TA)に挑戦
-              </Link>
-              <Link
-                className="inline-flex w-full items-center justify-center rounded-full border border-white/60 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-                href="/game?start=random"
-              >
-                ランダムなお題に挑戦
-              </Link>
-              <button
-                type="button"
-                onClick={handleOpenCustomModal}
-                className="inline-flex w-full items-center justify-center rounded-full border border-white/20 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-              >
-                カスタムお題を作成
-              </button>
+            <div className="mt-8 space-y-4">
+              {/* Daily Challenge Section with Mode Selector */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-medium text-white backdrop-blur transition hover:bg-white/15">
+                    <input
+                      type="checkbox"
+                      checked={isTimeAttackMode}
+                      onChange={(e) => setIsTimeAttackMode(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-white/30 bg-white/10 text-blue-500 focus:ring-2 focus:ring-blue-400/40 focus:ring-offset-0"
+                    />
+                    <span>タイムアタック(TA)</span>
+                  </label>
+                  <Link
+                    className={`flex-1 rounded-full px-6 py-3 text-center text-sm font-semibold shadow-lg transition sm:flex-initial ${
+                      isDailyChallengeLoaded
+                        ? "bg-white text-slate-900 hover:bg-slate-100"
+                        : "cursor-not-allowed bg-white/40 text-slate-500"
+                    }`}
+                    href={isDailyChallengeLoaded ? `/game?start=${isTimeAttackMode ? "daily-ta" : "daily"}` : "#"}
+                    onClick={(e) => {
+                      if (!isDailyChallengeLoaded) {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
+                    今日のお題でスタート
+                  </Link>
+                </div>
+              </div>
+
+              {/* Secondary Actions */}
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link
+                  className="flex-1 rounded-full border border-white/60 px-6 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10"
+                  href="/game?start=random"
+                >
+                  ランダムなお題に挑戦
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleOpenCustomModal}
+                  className="flex-1 rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  カスタムお題を作成
+                </button>
+              </div>
             </div>
           </div>
           <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
