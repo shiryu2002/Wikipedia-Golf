@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confetti Test - Wikipedia Golf</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .container {
+            text-align: center;
+            z-index: 1;
+            color: white;
+        }
+        
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 2rem;
+            background: linear-gradient(45deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        button {
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: 600;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        }
+        
+        button:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+            box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10000;
+        }
+        
+        .message {
+            margin-top: 2rem;
+            font-size: 1.2rem;
+            color: rgba(255, 255, 255, 0.7);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="container">
+        <h1>🎉 ゴール達成！🎉</h1>
+        <button onclick="startConfetti()">紙吹雪を見る</button>
+        <p class="message">クリア時にこのような紙吹雪が舞います</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        
+        const colors = [
+            '#ff0000', // red
+            '#00ff00', // green
+            '#0000ff', // blue
+            '#ffff00', // yellow
+            '#ff00ff', // magenta
+            '#00ffff', // cyan
+            '#ff8800', // orange
+            '#ff0088', // pink
+            '#88ff00', // lime
+            '#0088ff', // sky blue
+        ];
+        
+        let particles = [];
+        let animationId = null;
+        
+        function createParticles() {
+            particles = [];
+            const particleCount = 150;
+            
+            // Create particles bursting from center
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const velocity = Math.random() * 15 + 5; // Random velocity between 5-20
+                
+                particles.push({
+                    x: centerX,
+                    y: centerY,
+                    vx: Math.cos(angle) * velocity,
+                    vy: Math.sin(angle) * velocity,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    size: Math.random() * 8 + 4,
+                    rotation: Math.random() * 360,
+                    rotationSpeed: (Math.random() - 0.5) * 10,
+                    gravity: 0.3,
+                });
+            }
+        }
+        
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            let allOffScreen = true;
+            
+            particles.forEach(particle => {
+                // Update particle position
+                particle.vy += particle.gravity;
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.rotation += particle.rotationSpeed;
+                
+                if (particle.y < canvas.height) {
+                    allOffScreen = false;
+                }
+                
+                // Draw particle
+                ctx.save();
+                ctx.translate(particle.x, particle.y);
+                ctx.rotate((particle.rotation * Math.PI) / 180);
+                ctx.fillStyle = particle.color;
+                ctx.fillRect(
+                    -particle.size / 2,
+                    -particle.size / 2,
+                    particle.size,
+                    particle.size
+                );
+                ctx.restore();
+            });
+            
+            if (!allOffScreen) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+        
+        function startConfetti() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            createParticles();
+            animate();
+        }
+        
+        // Auto-start confetti on page load
+        setTimeout(() => {
+            startConfetti();
+        }, 500);
+    </script>
+</body>
+</html>

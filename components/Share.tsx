@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import Modal from "react-modal";
 import { TwitterShareButton, XIcon } from "react-share";
+import { formatTime } from "@/utils/time";
 
 interface ShareModalProps {
   gameState: "idle" | "playing" | "gameover";
@@ -9,6 +10,8 @@ interface ShareModalProps {
   history: { title: string; url: string; stroke: number }[];
   goal: string;
   isDailyMode: boolean;
+  isTimeAttackMode: boolean;
+  elapsedTime: number;
   locale: "en" | "ja";
 }
 
@@ -40,6 +43,8 @@ export const ShareModal = ({
   history,
   goal,
   isDailyMode,
+  isTimeAttackMode,
+  elapsedTime,
   locale,
 }: ShareModalProps) => {
   const [isCopied, setIsCopied] = useState(false);
@@ -65,7 +70,9 @@ export const ShareModal = ({
     .toISOString()
     .slice(0, 10)
     .replace(/-/g, "_")}`;
-  const baseShareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！`;
+  const formattedTime = formatTime(elapsedTime);
+  const timeText = isTimeAttackMode ? ` タイム: ${formattedTime}秒` : "";
+  const baseShareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！${timeText}`;
   const shareTagLine = isDailyMode
     ? `#WikipediaGolf #${shareDateTag}`
     : "#WikipediaGolf";
@@ -133,6 +140,12 @@ export const ShareModal = ({
             <span className="text-5xl font-bold text-white">{stroke}</span>
             <span className="text-md text-slate-300">打</span>
           </div>
+          {isTimeAttackMode && (
+            <div className="mt-3 flex items-baseline gap-3">
+              <span className="text-3xl font-bold text-blue-200">{formattedTime}</span>
+              <span className="text-md text-slate-300">秒</span>
+            </div>
+          )}
           <dl className="mt-4 space-y-2 text-sm text-slate-200">
             <div className="flex items-center justify-between">
               <dt className="text-slate-400">スタート記事</dt>
@@ -150,7 +163,7 @@ export const ShareModal = ({
         <section className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <TwitterShareButton
             url={shareUrl}
-            title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！`}
+            title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！${timeText}`}
             hashtags={hashtags}
           >
             <div className="group flex w-full items-center justify-center gap-3 rounded-full bg-blue-500/90 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto sm:self-start">
