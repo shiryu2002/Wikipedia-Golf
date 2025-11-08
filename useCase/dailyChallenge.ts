@@ -22,6 +22,8 @@ const API_BASE = (locale: "ja" | "en") =>
 const MAX_SEARCH_OFFSET = 500;
 const PAGEID_CHUNK_SIZE = 50;
 const MAX_CONCURRENT_BATCHES = 5;
+const ARTICLE_FETCH_TIMEOUT_MS = 2500;
+const ARTICLE_FETCH_MAX_ATTEMPTS = 5;
 
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -71,7 +73,6 @@ const findExistingPage = async (
   baseId: number,
 ): Promise<DailyChallengeEntry> => {
   const candidates = buildCandidateIds(baseId);
-
   const candidateChunks = chunkArray(candidates, PAGEID_CHUNK_SIZE);
 
   for (let index = 0; index < candidateChunks.length; index += MAX_CONCURRENT_BATCHES) {
@@ -116,6 +117,104 @@ const computeDailyBaseId = (date: Date): number => {
   const result = (year * DAILY_ID_MULTIPLIERS.year + month * DAILY_ID_MULTIPLIERS.month + day * DAILY_ID_MULTIPLIERS.day) * day;
 
   return result;
+};
+
+type ArticleIdentifier = {
+  id?: number;
+  title: string;
+};
+
+type ArticleParseResult = {
+  id?: number;
+  title: string;
+  html: string;
+};
+
+const buildParseUrl = (
+  locale: "ja" | "en",
+  identifier: ArticleIdentifier,
+): string => {
+  if (identifier.id !== undefined) {
+    return `${API_BASE(locale)}?action=parse&pageid=${identifier.id}&format=json&origin=*`;
+  }
+  return `${API_BASE(locale)}?action=parse&page=${encodeURIComponent(identifier.title)}&format=json&origin=*`;
+};
+
+const createAbortControllerWithTimeout = () => {
+  if (typeof AbortController === "undefined") {
+    return { controller: undefined, timeoutId: undefined } as const;
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, ARTICLE_FETCH_TIMEOUT_MS);
+  return { controller, timeoutId } as const;
+};
+
+export const fetchPageParseWithFallback = async (
+  locale: "ja" | "en",
+  identifier: ArticleIdentifier,
+  options?: {
+    maxAttempts?: number;
+  },
+): Promise<ArticleParseResult> => {
+  const maxAttempts = identifier.id !== undefined
+    ? options?.maxAttempts ?? ARTICLE_FETCH_MAX_ATTEMPTS
+    : 1;
+
+  let candidateId = identifier.id;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const currentIdentifier: ArticleIdentifier = {
+      id: candidateId,
+      title: identifier.title,
+    };
+    const requestUrl = buildParseUrl(locale, currentIdentifier);
+    const { controller, timeoutId } = createAbortControllerWithTimeout();
+
+    try {
+      if (currentIdentifier.id !== undefined) {
+        console.log(`記事ID: ${currentIdentifier.id} を取得中...`);
+      } else {
+        console.log(`記事タイトル: ${currentIdentifier.title} を取得中...`);
+      }
+
+      const response = await fetch(requestUrl, controller ? { signal: controller.signal } : undefined);
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      if (!response.ok) {
+        throw new Error(`Failed to parse article for ${currentIdentifier.id ?? currentIdentifier.title}`);
+      }
+      const data = await response.json();
+      if (data?.error) {
+        throw new Error(data.error.info ?? "Wikipedia parse API error");
+      }
+      if (!data?.parse?.text?.["*"]) {
+        throw new Error("Article content is empty");
+      }
+
+      return {
+        id: data.parse?.pageid ?? currentIdentifier.id,
+        title: data.parse?.title ?? identifier.title,
+        html: data.parse.text["*"],
+      };
+    } catch (error) {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      lastError = error;
+      if (candidateId === undefined || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      candidateId = candidateId + 1;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to resolve article parse");
 };
 
 export const fetchDailyChallenge = async (

@@ -6,17 +6,24 @@ import { HintsModal } from "@/components/Hints";
 import { ShareModal } from "@/components/Share";
 import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
 import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
+import { Confetti } from "@/components/Confetti";
 import Image from "next/image";
-import { DailyChallenge } from "@/useCase/dailyChallenge";
+import { DailyChallenge, fetchPageParseWithFallback } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
   loadDailyChallengeWithCache,
   readCachedDailyChallenge,
+  writeDailyChallengeCache,
 } from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
+import { formatTime } from "@/utils/time";
 
-type StartMode = "random" | "daily" | "custom";
+const isDailyGameMode = (mode: string): boolean => {
+  return mode === "daily" || mode === "daily-ta";
+};
+
+type StartMode = "random" | "daily" | "daily-ta" | "custom";
 
 type StartOptions = {
   startTitle?: string;
@@ -34,6 +41,7 @@ export default function GamePage() {
   const router = useRouter();
   const autoStartRef = useRef(false);
   const [title, setTitle] = useState<string>("");
+  const [articleId, setArticleId] = useState<number | undefined>(undefined);
   const [locale, setLocale] = useState<"en" | "ja">("ja");
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [content, setContent] = useState("");
@@ -53,11 +61,15 @@ export default function GamePage() {
   const [hints, setHints] = useState<string[]>([]);
   const [isHintModalOpen, setHintModal] = useState(false);
   const [isDailyMode, setIsDailyMode] = useState(false);
+  const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
   const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
+
 
   const handleReturnToTitle = useCallback(() => {
     if (typeof window === "undefined") {
@@ -78,6 +90,7 @@ export default function GamePage() {
     const anchor = event.currentTarget as HTMLAnchorElement | null;
     const title = anchor?.getAttribute("title");
     if (title) {
+      setArticleId(undefined);
       setTitle(title);
     }
   }, [isGoalDetailsView]);
@@ -89,6 +102,7 @@ export default function GamePage() {
       );
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
+      setArticleId(undefined);
       setTitle(randomTitle);
       setGameState("playing");
       return randomTitle;
@@ -105,54 +119,67 @@ export default function GamePage() {
   }) => {
     const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
-    const cacheKey = options.pageId !== undefined
+    const incomingCacheKey = options.pageId !== undefined
       ? `${activeLocale}:goal:id:${options.pageId}`
       : `${activeLocale}:goal:title:${options.title}`;
 
-    const cached = goalDetailsCacheRef.current.get(cacheKey);
+    const cached = goalDetailsCacheRef.current.get(incomingCacheKey);
     if (cached) {
       setNumOfReferer(cached.numOfRef);
       setHints(cached.hints);
       setGoalArticle(cached.html);
       return;
     }
-
-    const goalUrl = options.pageId !== undefined
-      ? `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
-      : `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
-
     try {
-      const [refResult, parseResult] = await Promise.all([
-        countReferer(options.title, activeLocale),
-        fetch(goalUrl).then((response) => {
-          if (!response.ok) {
-            throw new Error(`Failed to fetch goal article for ${options.title}`);
-          }
-          return response.json();
-        }),
-      ]);
+      const goalArticle = await fetchPageParseWithFallback(activeLocale, {
+        id: options.pageId,
+        title: options.title,
+      });
 
-      const goalHtml: string = parseResult.parse?.text?.["*"] ?? "";
-      const resolvedPageId: number | undefined = options.pageId ?? parseResult.parse?.pageid;
+      const resolvedGoalId = goalArticle.id ?? options.pageId;
+
+      const refResult = await countReferer(goalArticle.title, activeLocale);
       const normalizedHints: string[] = Array.isArray(refResult.hints)
         ? refResult.hints.map((hint: any) => String(hint))
         : [];
 
       const entry: GoalDetailsCacheEntry = {
-        html: goalHtml,
+        html: goalArticle.html,
         numOfRef: Number(refResult.numOfRef ?? 0),
         hints: normalizedHints,
       };
 
-      goalDetailsCacheRef.current.set(cacheKey, entry);
-      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${options.title}`, entry);
-      if (resolvedPageId !== undefined) {
-        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedPageId}`, entry);
+      goalDetailsCacheRef.current.set(incomingCacheKey, entry);
+      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${goalArticle.title}`, entry);
+      if (resolvedGoalId !== undefined) {
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
       }
 
+      setGoal(goalArticle.title);
       setNumOfReferer(entry.numOfRef);
       setHints(entry.hints);
       setGoalArticle(entry.html);
+
+      if (options.pageId !== undefined) {
+        setDailyChallenge((prev) => {
+          if (!prev || prev.locale !== activeLocale) {
+            return prev;
+          }
+          const resolvedId = resolvedGoalId ?? prev.goal.id;
+          if (resolvedId === prev.goal.id && goalArticle.title === prev.goal.title) {
+            return prev;
+          }
+          const updated: DailyChallenge = {
+            ...prev,
+            goal: {
+              id: resolvedId,
+              title: goalArticle.title,
+            },
+          };
+          writeDailyChallengeCache(activeLocale, updated);
+          return updated;
+        });
+      }
     } catch (error) {
       console.error("ゴールページの取得に失敗しました", error);
     }
@@ -200,6 +227,10 @@ export default function GamePage() {
   const checkIfGameOver = (title: string) => {
     if (title === goal) {
       setGameState("gameover");
+      // Stop timer when goal is reached
+      if (isTimeAttackMode && startTime !== null) {
+        setElapsedTime(performance.now() - startTime);
+      }
     }
   };
 
@@ -208,6 +239,19 @@ export default function GamePage() {
     fetchTitle(title);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title]);
+
+  // Timer update effect
+  useEffect(() => {
+    if (!isTimeAttackMode || gameState !== "playing" || startTime === null) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      setElapsedTime(performance.now() - startTime);
+    }, 1000); // Update every 1 second
+
+    return () => clearInterval(intervalId);
+  }, [isTimeAttackMode, gameState, startTime]);
 
   useEffect(() => {
     const links = document.querySelectorAll<HTMLAnchorElement>("#articleContent a");
@@ -306,12 +350,11 @@ export default function GamePage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(requestUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch article: ${title}`);
-      }
-      const data = await response.json();
-      const html = data.parse?.text?.["*"] ?? "";
+      const result = await fetchPageParseWithFallback(locale, { 
+        id: articleId,
+        title 
+      });
+      const html = result.html;
 
       articleCacheRef.current.set(cacheKey, html);
       applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
@@ -336,6 +379,7 @@ export default function GamePage() {
     setHistory(updatedHistory);
     setStroke(previous.stroke);
     setGameState("playing");
+    setArticleId(undefined);
     setTitle(previous.title);
   };
 
@@ -352,9 +396,14 @@ export default function GamePage() {
     setGoal("");
     setGoalArticle("");
     setIsGoalDetailsView(false);
-    setIsDailyStartup(mode === "daily");
+    setIsDailyStartup(isDailyGameMode(mode));
+    
+    // Reset timer state
+    setIsTimeAttackMode(mode === "daily-ta");
+    setStartTime(null);
+    setElapsedTime(0);
 
-    if (mode === "daily") {
+    if (isDailyGameMode(mode)) {
       ignoreNextContentRef.current = true;
       setContent("");
       const challenge = await resolveDailyChallenge();
@@ -364,7 +413,13 @@ export default function GamePage() {
         setDailyChallenge(challenge);
         setIsDailyMode(true);
         setGameState("playing");
+        setArticleId(challenge.start.id);
         setTitle(challenge.start.title);
+        
+        // Start timer for time attack mode
+        if (mode === "daily-ta") {
+          setStartTime(performance.now());
+        }
 
         void (async () => {
           setIsGoalLoading(true);
@@ -404,6 +459,7 @@ export default function GamePage() {
         setIsDailyMode(false);
         setIsDailyStartup(false);
         setGameState("playing");
+        setArticleId(undefined);
         setTitle(options.startTitle);
         setIsGoalLoading(true);
         try {
@@ -510,6 +566,8 @@ export default function GamePage() {
 
     if (startParam === "daily") {
       resolvedMode = "daily";
+    } else if (startParam === "daily-ta") {
+      resolvedMode = "daily-ta";
     } else if (startParam === "random" && startTitleParam && goalTitleParam) {
       resolvedMode = "random";
       startOptions = {
@@ -594,13 +652,21 @@ export default function GamePage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex w-full justify-end sm:w-auto sm:justify-start sm:ml-auto">
+                <div className="flex w-full justify-end gap-4 sm:w-auto sm:justify-start sm:ml-auto">
                   <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
                     打数:
                     <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
                       {stroke === -1 ? "0" : stroke}
                     </span>
                   </p>
+                  {isTimeAttackMode && (
+                    <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
+                      タイム:
+                      <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
+                        {formatTime(elapsedTime)}s
+                      </span>
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:gap-3 sm:justify-end">
@@ -659,6 +725,8 @@ export default function GamePage() {
             history={history}
             goal={goal}
             isDailyMode={isDailyMode}
+            isTimeAttackMode={isTimeAttackMode}
+            elapsedTime={elapsedTime}
             locale={locale}
           />
         </div>
@@ -725,12 +793,12 @@ export default function GamePage() {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">辿ったルート</h2>
               <button
-                className={`text-xs transition ${history.length <= 1
+                className={`text-xs transition ${history.length <= 1 || isTimeAttackMode
                   ? "cursor-not-allowed text-slate-500"
                   : "text-blue-200 hover:text-blue-100"
                   }`}
                 onClick={handleBackClick}
-                disabled={history.length <= 1}
+                disabled={history.length <= 1 || isTimeAttackMode}
               >
                 1手戻す
               </button>
@@ -761,8 +829,8 @@ export default function GamePage() {
           </div>
         </aside>
 
-        <section className="flex-1">
-          <div className="rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
+        <section className="flex-1 min-w-0">
+          <div className="min-w-0 rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
             <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
               <div className="max-w-2xl">
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
@@ -822,12 +890,14 @@ export default function GamePage() {
         onClose={() => setHistoryModalOpen(false)}
         onBack={handleBackClick}
         history={history}
+        isTimeAttackMode={isTimeAttackMode}
       />
       <MobileHintsModal
         isOpen={isHintModalOpen}
         onClose={() => setHintModal(false)}
         hints={hints}
       />
+      <Confetti active={gameState === "gameover"} />
     </div>
   );
 }
