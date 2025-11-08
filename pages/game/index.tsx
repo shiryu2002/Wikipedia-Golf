@@ -7,11 +7,12 @@ import { ShareModal } from "@/components/Share";
 import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
 import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
 import Image from "next/image";
-import { DailyChallenge } from "@/useCase/dailyChallenge";
+import { DailyChallenge, fetchPageParseWithFallback } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
   loadDailyChallengeWithCache,
   readCachedDailyChallenge,
+  writeDailyChallengeCache,
 } from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -59,6 +60,7 @@ export default function GamePage() {
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
 
+
   const handleReturnToTitle = useCallback(() => {
     if (typeof window === "undefined") {
       return;
@@ -105,54 +107,67 @@ export default function GamePage() {
   }) => {
     const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
-    const cacheKey = options.pageId !== undefined
+    const incomingCacheKey = options.pageId !== undefined
       ? `${activeLocale}:goal:id:${options.pageId}`
       : `${activeLocale}:goal:title:${options.title}`;
 
-    const cached = goalDetailsCacheRef.current.get(cacheKey);
+    const cached = goalDetailsCacheRef.current.get(incomingCacheKey);
     if (cached) {
       setNumOfReferer(cached.numOfRef);
       setHints(cached.hints);
       setGoalArticle(cached.html);
       return;
     }
-
-    const goalUrl = options.pageId !== undefined
-      ? `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&pageid=${options.pageId}&format=json&origin=*`
-      : `https://${activeLocale}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(options.title)}&format=json&origin=*`;
-
     try {
-      const [refResult, parseResult] = await Promise.all([
-        countReferer(options.title, activeLocale),
-        fetch(goalUrl).then((response) => {
-          if (!response.ok) {
-            throw new Error(`Failed to fetch goal article for ${options.title}`);
-          }
-          return response.json();
-        }),
-      ]);
+      const goalArticle = await fetchPageParseWithFallback(activeLocale, {
+        id: options.pageId,
+        title: options.title,
+      });
 
-      const goalHtml: string = parseResult.parse?.text?.["*"] ?? "";
-      const resolvedPageId: number | undefined = options.pageId ?? parseResult.parse?.pageid;
+      const resolvedGoalId = goalArticle.id ?? options.pageId;
+
+      const refResult = await countReferer(goalArticle.title, activeLocale);
       const normalizedHints: string[] = Array.isArray(refResult.hints)
         ? refResult.hints.map((hint: any) => String(hint))
         : [];
 
       const entry: GoalDetailsCacheEntry = {
-        html: goalHtml,
+        html: goalArticle.html,
         numOfRef: Number(refResult.numOfRef ?? 0),
         hints: normalizedHints,
       };
 
-      goalDetailsCacheRef.current.set(cacheKey, entry);
-      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${options.title}`, entry);
-      if (resolvedPageId !== undefined) {
-        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedPageId}`, entry);
+      goalDetailsCacheRef.current.set(incomingCacheKey, entry);
+      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${goalArticle.title}`, entry);
+      if (resolvedGoalId !== undefined) {
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
       }
 
+      setGoal(goalArticle.title);
       setNumOfReferer(entry.numOfRef);
       setHints(entry.hints);
       setGoalArticle(entry.html);
+
+      if (options.pageId !== undefined) {
+        setDailyChallenge((prev) => {
+          if (!prev || prev.locale !== activeLocale) {
+            return prev;
+          }
+          const resolvedId = resolvedGoalId ?? prev.goal.id;
+          if (resolvedId === prev.goal.id && goalArticle.title === prev.goal.title) {
+            return prev;
+          }
+          const updated: DailyChallenge = {
+            ...prev,
+            goal: {
+              id: resolvedId,
+              title: goalArticle.title,
+            },
+          };
+          writeDailyChallengeCache(activeLocale, updated);
+          return updated;
+        });
+      }
     } catch (error) {
       console.error("ゴールページの取得に失敗しました", error);
     }
