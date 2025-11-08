@@ -41,6 +41,7 @@ export default function GamePage() {
   const router = useRouter();
   const autoStartRef = useRef(false);
   const [title, setTitle] = useState<string>("");
+  const [articleId, setArticleId] = useState<number | undefined>(undefined);
   const [locale, setLocale] = useState<"en" | "ja">("ja");
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [content, setContent] = useState("");
@@ -89,6 +90,7 @@ export default function GamePage() {
     const anchor = event.currentTarget as HTMLAnchorElement | null;
     const title = anchor?.getAttribute("title");
     if (title) {
+      setArticleId(undefined);
       setTitle(title);
     }
   }, [isGoalDetailsView]);
@@ -100,6 +102,7 @@ export default function GamePage() {
       );
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
+      setArticleId(undefined);
       setTitle(randomTitle);
       setGameState("playing");
       return randomTitle;
@@ -347,12 +350,11 @@ export default function GamePage() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(requestUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch article: ${title}`);
-      }
-      const data = await response.json();
-      const html = data.parse?.text?.["*"] ?? "";
+      const result = await fetchPageParseWithFallback(locale, { 
+        id: articleId,
+        title 
+      });
+      const html = result.html;
 
       articleCacheRef.current.set(cacheKey, html);
       applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
@@ -377,6 +379,7 @@ export default function GamePage() {
     setHistory(updatedHistory);
     setStroke(previous.stroke);
     setGameState("playing");
+    setArticleId(undefined);
     setTitle(previous.title);
   };
 
@@ -410,6 +413,7 @@ export default function GamePage() {
         setDailyChallenge(challenge);
         setIsDailyMode(true);
         setGameState("playing");
+        setArticleId(challenge.start.id);
         setTitle(challenge.start.title);
         
         // Start timer for time attack mode
@@ -455,6 +459,7 @@ export default function GamePage() {
         setIsDailyMode(false);
         setIsDailyStartup(false);
         setGameState("playing");
+        setArticleId(undefined);
         setTitle(options.startTitle);
         setIsGoalLoading(true);
         try {
