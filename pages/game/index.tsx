@@ -66,6 +66,8 @@ export default function GamePage() {
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
   const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
+  const [isUrlCopied, setIsUrlCopied] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
@@ -80,6 +82,44 @@ export default function GamePage() {
       void router.push("/");
     }
   }, [router]);
+
+  const handleCopyCustomUrl = useCallback(async () => {
+    if (!goal || isDailyMode) return;
+    
+    const startTitle = history.length > 0 ? history[0]?.title : title;
+    if (!startTitle) return;
+
+    try {
+      const siteOrigin = typeof window !== "undefined" ? window.location.origin : "https://wikipedia-golf.vercel.app";
+      const params = new URLSearchParams({
+        start: "custom",
+        startTitle,
+        goalTitle: goal,
+      });
+      if (locale) {
+        params.set("locale", locale);
+      }
+      const customUrl = `${siteOrigin}/game?${params.toString()}`;
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(customUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = customUrl;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setIsUrlCopied(true);
+      window.setTimeout(() => setIsUrlCopied(false), 2000);
+    } catch (error) {
+      console.error("URLのコピーに失敗しました", error);
+    }
+  }, [goal, history, isDailyMode, locale, title]);
 
   const handleLinkClick = useCallback((event: MouseEvent) => {
     event.preventDefault();
@@ -609,6 +649,7 @@ export default function GamePage() {
     : title || dailyChallenge?.start.title || "未設定";
   const headerGoalTitle = goal || dailyChallenge?.goal.title || "未設定";
   const canToggleGoal = Boolean(goal);
+  const isCustomMode = !isDailyMode && gameState === "playing" && goal && title;
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -670,52 +711,126 @@ export default function GamePage() {
                 </div>
               </div>
               <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:gap-3 sm:justify-end">
+                {/* Desktop buttons - always visible */}
                 <button
-                  className="flex-1 min-w-[140px] rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:flex-none sm:w-auto"
+                  className="hidden sm:flex sm:flex-none sm:w-auto rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400"
                   onClick={() => start("random")}
                 >
                   ランダムでスタート
                 </button>
                 {!isDailyRunActive && (
                   <button
-                    className="flex-1 min-w-[140px] rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white sm:flex-none sm:w-auto"
+                    className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white md:hidden"
                     onClick={() => start("daily")}
                   >
                     今日のお題に挑戦
                   </button>
                 )}
                 {gameState === "playing" && (
-                  <button
-                    className="flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:flex-none sm:w-auto"
-                    onClick={() => setHintModal(!isHintModalOpen)}
-                  >
-                    ヒントを見る
-                  </button>
+                  <>
+                    <button
+                      className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                      onClick={() => setHintModal(!isHintModalOpen)}
+                    >
+                      ヒントを見る
+                    </button>
+                    {isCustomMode && (
+                      <button
+                        className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                        onClick={handleCopyCustomUrl}
+                      >
+                        {isUrlCopied ? "✓ コピーしました！" : "URLを共有"}
+                      </button>
+                    )}
+                  </>
                 )}
+
+                {/* Mobile menu toggle button */}
                 <button
-                  className="flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:hidden"
-                  onClick={() => setHistoryModalOpen(true)}
+                  className="sm:hidden flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                   type="button"
                 >
-                  ルート
+                  {isMobileMenuOpen ? "メニューを閉じる" : "メニュー"}
                 </button>
-                <button
-                  className={`flex-1 min-w-[140px] rounded-full px-5 py-3 text-sm font-semibold transition sm:hidden ${canToggleGoal
-                    ? "border border-white/20 text-white hover:bg-white/10"
-                    : "cursor-not-allowed border border-white/10 text-slate-500"}`}
-                  onClick={() => {
-                    if (!canToggleGoal) return;
-                    setIsGoalDetailsView((prev) => !prev);
-                  }}
-                  disabled={!canToggleGoal}
-                  type="button"
-                >
-                  {canToggleGoal
-                    ? isGoalDetailsView
-                      ? "現在の記事に戻る"
-                      : "ゴール記事を表示"
-                    : "ゴールは未設定"}
-                </button>
+
+                {/* Mobile collapsible menu */}
+                {isMobileMenuOpen && (
+                  <div className="sm:hidden w-full flex flex-col gap-2">
+                    <button
+                      className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400"
+                      onClick={() => {
+                        start("random");
+                        setIsMobileMenuOpen(false);
+                      }}
+                    >
+                      ランダムでスタート
+                    </button>
+                    {!isDailyRunActive && (
+                      <button
+                        className="w-full rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white"
+                        onClick={() => {
+                          start("daily");
+                          setIsMobileMenuOpen(false);
+                        }}
+                      >
+                        今日のお題に挑戦
+                      </button>
+                    )}
+                    {gameState === "playing" && (
+                      <>
+                        <button
+                          className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                          onClick={() => {
+                            setHintModal(!isHintModalOpen);
+                            setIsMobileMenuOpen(false);
+                          }}
+                        >
+                          ヒントを見る
+                        </button>
+                        {isCustomMode && (
+                          <button
+                            className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                            onClick={() => {
+                              handleCopyCustomUrl();
+                              setIsMobileMenuOpen(false);
+                            }}
+                          >
+                            {isUrlCopied ? "✓ コピーしました！" : "URLを共有"}
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                      onClick={() => {
+                        setHistoryModalOpen(true);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      type="button"
+                    >
+                      ルート
+                    </button>
+                    <button
+                      className={`w-full rounded-full px-5 py-3 text-sm font-semibold transition ${canToggleGoal
+                        ? "border border-white/20 text-white hover:bg-white/10"
+                        : "cursor-not-allowed border border-white/10 text-slate-500"}`}
+                      onClick={() => {
+                        if (!canToggleGoal) return;
+                        setIsGoalDetailsView((prev) => !prev);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      disabled={!canToggleGoal}
+                      type="button"
+                    >
+                      {canToggleGoal
+                        ? isGoalDetailsView
+                          ? "現在の記事に戻る"
+                          : "ゴール記事を表示"
+                        : "ゴールは未設定"}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -733,7 +848,7 @@ export default function GamePage() {
       </header>
 
       <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 lg:flex-row">
-        <aside className="hidden md:flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+        <aside className="hidden md:flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-32 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
           <section className="hidden rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl sm:block">
             <p className="text-xs uppercase tracking-[0.3em] text-white/70">
               今日のお題
