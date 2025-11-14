@@ -6,6 +6,7 @@ interface HintsModalProps {
 }
 
 export const HintsModal = ({ hints, isOpen }: HintsModalProps) => {
+  // Return null when closed to remove from DOM and prevent Ctrl+F from finding hidden content
   if (!isOpen) {
     return null;
   }
