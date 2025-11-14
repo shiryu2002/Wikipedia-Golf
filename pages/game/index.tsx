@@ -122,12 +122,19 @@ export default function GamePage() {
   }, [goal, history, isDailyMode, locale, title]);
 
   const handleLinkClick = useCallback((event: MouseEvent) => {
+    const anchor = event.currentTarget as HTMLAnchorElement | null;
+    const href = anchor?.getAttribute("href");
+    
+    // Allow anchor links (TOC navigation) to work normally without counting as a move
+    if (href && href.startsWith("#")) {
+      return;
+    }
+
     event.preventDefault();
     if (isGoalDetailsView) {
       return;
     }
 
-    const anchor = event.currentTarget as HTMLAnchorElement | null;
     const title = anchor?.getAttribute("title");
     if (title) {
       setArticleId(undefined);
