@@ -6,11 +6,13 @@ interface HintsModalProps {
 }
 
 export const HintsModal = ({ hints, isOpen }: HintsModalProps) => {
+  // Return null when closed to remove from DOM and prevent Ctrl+F from finding hidden content
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <div
-      className={`my-6 transition-[max-height,opacity] duration-300 ${isOpen ? "max-h-[520px] opacity-100 overflow-visible" : "max-h-0 opacity-0 overflow-hidden"
-        }`}
-    >
+    <div className="my-6">
       <div className="rounded-3xl bg-slate-900/90 p-6 text-white shadow-xl backdrop-blur">
         <p className="text-sm uppercase tracking-wide text-blue-300">Hints</p>
         <h3 className="mt-2 text-2xl font-semibold">ゴールのリンク元一覧</h3>
