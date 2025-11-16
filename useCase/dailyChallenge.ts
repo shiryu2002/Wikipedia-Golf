@@ -110,6 +110,50 @@ const findExistingPage = async (
   throw new Error(`Could not resolve a Wikipedia page near id ${baseId}`);
 };
 
+const findParseablePage = async (
+  locale: "ja" | "en",
+  baseId: number,
+): Promise<DailyChallengeEntry> => {
+  const candidates = buildCandidateIds(baseId);
+  
+  // Try each candidate ID to find one that can be parsed
+  for (const candidateId of candidates) {
+    try {
+      // First check if the page exists
+      const metaResult = await fetchPageMetaBatch(locale, [candidateId]);
+      const page = metaResult?.[String(candidateId)];
+      
+      if (page && !page.missing && !page.invalid) {
+        const pageTitle = page.title;
+        const pageId = page.pageid ?? candidateId;
+        
+        // Now try to parse it to make sure it's actually parseable
+        try {
+          await fetchPageParseWithFallback(locale, { 
+            id: pageId,
+            title: pageTitle 
+          }, { maxAttempts: 1 });
+          
+          // If we got here, the page is parseable
+          return {
+            id: pageId,
+            title: pageTitle,
+          };
+        } catch (parseError) {
+          // This page exists but can't be parsed, try next candidate
+          console.log(`記事ID ${pageId} (${pageTitle}) は解析できません。次の候補を試します...`);
+          continue;
+        }
+      }
+    } catch (error) {
+      // Failed to check this candidate, try next
+      continue;
+    }
+  }
+
+  throw new Error(`Could not resolve a parseable Wikipedia page near id ${baseId}`);
+};
+
 const computeDailyBaseId = (date: Date): number => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -225,7 +269,7 @@ export const fetchDailyChallenge = async (
   const baseId = computeDailyBaseId(today);
 
   const goal = await findExistingPage(locale, baseId + 100);
-  const start = await findExistingPage(locale, goal.id + 1000);
+  const start = await findParseablePage(locale, goal.id + 1000);
 
   return {
     locale,
