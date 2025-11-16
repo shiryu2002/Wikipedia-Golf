@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import CircularProgress from "@mui/material/CircularProgress";
 
 import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
@@ -80,6 +81,7 @@ const useArticleSuggestions = (
 export default function Home() {
   const router = useRouter();
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
+  const [isDailyChallengeLoading, setIsDailyChallengeLoading] = useState(false);
   const [isCustomModalOpen, setCustomModalOpen] = useState(false);
   const [customStartTitle, setCustomStartTitle] = useState("");
   const [customGoalTitle, setCustomGoalTitle] = useState("");
@@ -197,10 +199,14 @@ export default function Home() {
       const cached = readCachedDailyChallenge("ja");
       if (cached) {
         setDailyChallenge(cached);
+      } else {
+        // No cached data, show loading state
+        setIsDailyChallengeLoading(true);
       }
     }
 
     const loadChallenge = async () => {
+      setIsDailyChallengeLoading(true);
       try {
         const challenge = await loadDailyChallengeWithCache("ja");
         if (!isCancelled) {
@@ -210,6 +216,10 @@ export default function Home() {
         console.error("デイリーチャレンジの取得に失敗しました", error);
         if (!isCancelled) {
           setDailyChallenge(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsDailyChallengeLoading(false);
         }
       }
     };
@@ -284,8 +294,18 @@ export default function Home() {
             <p className="text-sm text-white/70">
               今日のお題
             </p>
-            <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">スタート: {dailyStartTitle}</p>
-            <p className="mt-2 text-3xl font-semibold leading-tight md:text-4xl">ゴール: {dailyGoalTitle}</p>
+            <p className="mt-2 flex items-center gap-2 text-3xl font-semibold leading-tight md:text-4xl">
+              スタート: {dailyStartTitle}
+              {isDailyChallengeLoading && !dailyChallenge?.start?.title && (
+                <CircularProgress size={24} className="text-white" sx={{ color: 'white' }} />
+              )}
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-3xl font-semibold leading-tight md:text-4xl">
+              ゴール: {dailyGoalTitle}
+              {isDailyChallengeLoading && !dailyChallenge?.goal?.title && (
+                <CircularProgress size={24} className="text-white" sx={{ color: 'white' }} />
+              )}
+            </p>
             <p className="mt-4 text-sm text-white/80">{dailyGoalDate} のチャレンジ</p>
             <div className="mt-8 space-y-4">
               {/* Daily Challenge Section with Mode Selector */}

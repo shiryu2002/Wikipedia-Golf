@@ -22,7 +22,7 @@ const API_BASE = (locale: "ja" | "en") =>
 const MAX_SEARCH_OFFSET = 500;
 const PAGEID_CHUNK_SIZE = 50;
 const MAX_CONCURRENT_BATCHES = 5;
-const ARTICLE_FETCH_TIMEOUT_MS = 2500;
+const ARTICLE_FETCH_TIMEOUT_MS = 2000;
 const ARTICLE_FETCH_MAX_ATTEMPTS = 5;
 
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
