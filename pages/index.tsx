@@ -89,6 +89,7 @@ export default function Home() {
   const [showStartSuggestions, setShowStartSuggestions] = useState(false);
   const [showGoalSuggestions, setShowGoalSuggestions] = useState(false);
   const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
+  const [isHintMode, setIsHintMode] = useState(false);
 
   const {
     suggestions: startSuggestions,
@@ -299,13 +300,22 @@ export default function Home() {
                     />
                     <span>タイムアタック(TA)</span>
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-medium text-white backdrop-blur transition hover:bg-white/15">
+                    <input
+                      type="checkbox"
+                      checked={isHintMode}
+                      onChange={(e) => setIsHintMode(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-white/30 bg-white/10 text-blue-500 focus:ring-2 focus:ring-blue-400/40 focus:ring-offset-0"
+                    />
+                    <span>ヒントあり</span>
+                  </label>
                   <Link
                     className={`flex-1 rounded-full px-6 py-3 text-center text-sm font-semibold shadow-lg transition sm:flex-initial ${
                       isDailyChallengeLoaded
                         ? "bg-white text-slate-900 hover:bg-slate-100"
                         : "cursor-not-allowed bg-white/40 text-slate-500"
                     }`}
-                    href={isDailyChallengeLoaded ? `/game?start=${isTimeAttackMode ? "daily-ta" : "daily"}` : "#"}
+                    href={isDailyChallengeLoaded ? `/game?start=${isTimeAttackMode ? "daily-ta" : "daily"}${isHintMode ? "&hint=1" : ""}` : "#"}
                     onClick={(e) => {
                       if (!isDailyChallengeLoaded) {
                         e.preventDefault();
@@ -321,7 +331,7 @@ export default function Home() {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Link
                   className="flex-1 rounded-full border border-white/60 px-6 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10"
-                  href="/game?start=random"
+                  href={`/game?start=random${isHintMode ? "&hint=1" : ""}`}
                 >
                   ランダムなお題に挑戦
                 </Link>
