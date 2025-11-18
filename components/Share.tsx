@@ -48,6 +48,7 @@ export const ShareModal = ({
   locale,
 }: ShareModalProps) => {
   const [isCopied, setIsCopied] = useState(false);
+  const [isRouteCopied, setIsRouteCopied] = useState(false);
 
   const startTitle = history.length > 0 ? history[0].title : "";
   const siteOrigin = "https://wikipedia-golf.vercel.app";
@@ -100,6 +101,38 @@ export const ShareModal = ({
       window.setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
       console.error("共有テキストのコピーに失敗しました", error);
+    }
+  };
+
+  const handleCopyRoute = async () => {
+    try {
+      const routeText = history
+        .map((item, index) => {
+          if (index === 0) {
+            return `スタート: ${item.title}`;
+          }
+          return `${item.stroke}打目: ${item.title}`;
+        })
+        .join("\n");
+      const fullRouteText = `${routeText}\nゴール: ${goal}`;
+
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(fullRouteText);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = fullRouteText;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setIsRouteCopied(true);
+      window.setTimeout(() => setIsRouteCopied(false), 2000);
+    } catch (error) {
+      console.error("ルートのコピーに失敗しました", error);
     }
   };
 
@@ -181,6 +214,19 @@ export const ShareModal = ({
               }`}
           >
             {isCopied ? "コピーしました！" : "共有テキストをコピー"}
+          </button>
+        </section>
+
+        <section className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={handleCopyRoute}
+            className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:w-auto ${isRouteCopied
+              ? "bg-emerald-500 text-white shadow-lg"
+              : "border border-white/20 bg-transparent text-white hover:bg-white/10"
+              }`}
+          >
+            {isRouteCopied ? "コピーしました！" : "辿ったルートをコピー"}
           </button>
         </section>
 
