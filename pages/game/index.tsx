@@ -68,6 +68,7 @@ export default function GamePage() {
   const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isHintEnabled, setIsHintEnabled] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
@@ -408,6 +409,22 @@ export default function GamePage() {
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
       setIsDailyStartup(false);
+      
+      // If this is a daily challenge startup and the article failed to load, try to fetch by title only
+      if (isDailyStartup && articleId !== undefined) {
+        console.log("記事IDでの取得に失敗しました。タイトルで再試行します...");
+        try {
+          const result = await fetchPageParseWithFallback(locale, { 
+            title 
+          });
+          const html = result.html;
+          
+          articleCacheRef.current.set(cacheKey, html);
+          applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
+        } catch (retryError) {
+          console.error("タイトルでの記事取得にも失敗しました", retryError);
+        }
+      }
     } finally {
       setIsLoading(false);
       finalizeArticleLoad(shouldSkipProgressUpdate);
@@ -607,6 +624,10 @@ export default function GamePage() {
     const startTitleParam = decodeQueryParam(router.query.startTitle);
     const goalTitleParam = decodeQueryParam(router.query.goalTitle);
     const localeParam = decodeQueryParam(router.query.locale);
+    const hintParam = decodeQueryParam(router.query.hint);
+
+    // Set hint enabled state based on query parameter
+    setIsHintEnabled(hintParam === "1");
 
     let resolvedMode: StartMode | null = null;
     let startOptions: StartOptions | undefined;
@@ -642,7 +663,7 @@ export default function GamePage() {
       void start(resolvedMode, startOptions);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.query.start, router.query.startTitle, router.query.goalTitle, router.query.locale]);
+  }, [router.isReady, router.query.start, router.query.startTitle, router.query.goalTitle, router.query.locale, router.query.hint]);
 
   const activeArticleHtml = isGoalDetailsView ? goalArticle : content;
   const isPrimaryArticleLoading = isGoalDetailsView ? isGoalLoading : isLoading;
@@ -735,12 +756,14 @@ export default function GamePage() {
                 )}
                 {gameState === "playing" && (
                   <>
-                    <button
-                      className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                      onClick={() => setHintModal(!isHintModalOpen)}
-                    >
-                      ヒントを見る
-                    </button>
+                    {isHintEnabled && (
+                      <button
+                        className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                        onClick={() => setHintModal(!isHintModalOpen)}
+                      >
+                        ヒントを見る
+                      </button>
+                    )}
                     {isCustomMode && (
                       <button
                         className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
@@ -786,15 +809,17 @@ export default function GamePage() {
                     )}
                     {gameState === "playing" && (
                       <>
-                        <button
-                          className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                          onClick={() => {
-                            setHintModal(!isHintModalOpen);
-                            setIsMobileMenuOpen(false);
-                          }}
-                        >
-                          ヒントを見る
-                        </button>
+                        {isHintEnabled && (
+                          <button
+                            className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                            onClick={() => {
+                              setHintModal(!isHintModalOpen);
+                              setIsMobileMenuOpen(false);
+                            }}
+                          >
+                            ヒントを見る
+                          </button>
+                        )}
                         {isCustomMode && (
                           <button
                             className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
@@ -967,13 +992,22 @@ export default function GamePage() {
                   </p>
                 )}
               </div>
-              {isGoalDetailsView && (
+              {isGoalDetailsView ? (
                 <button
                   className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
                   onClick={() => setIsGoalDetailsView(false)}
                 >
                   現在の記事に戻る
                 </button>
+              ) : (
+                canToggleGoal && (
+                  <button
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                    onClick={() => setIsGoalDetailsView(true)}
+                  >
+                    ゴール記事を表示
+                  </button>
+                )
               )}
             </div>
             {shouldShowDailyStartup ? (
