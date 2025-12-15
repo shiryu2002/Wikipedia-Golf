@@ -118,31 +118,35 @@ export const loadDailyChallengeWithCache = async (
     throw new Error("デイリーチャレンジを解決できませんでした");
   }
 
-  try {
-    const goalParse = await fetchPageParseWithFallback(locale, {
-      id: challenge.goal.id,
-      title: challenge.goal.title,
-    });
-    const resolvedGoalId = goalParse.id ?? challenge.goal.id;
-    const resolvedGoalTitle = goalParse.title ?? challenge.goal.title;
+  // Skip verification if the challenge was loaded from pre-generated JSON
+  // to avoid unnecessary API calls and improve loading speed
+  if (!challenge.fromJson) {
+    try {
+      const goalParse = await fetchPageParseWithFallback(locale, {
+        id: challenge.goal.id,
+        title: challenge.goal.title,
+      });
+      const resolvedGoalId = goalParse.id ?? challenge.goal.id;
+      const resolvedGoalTitle = goalParse.title ?? challenge.goal.title;
 
-    if (
-      resolvedGoalId !== challenge.goal.id
-      || resolvedGoalTitle !== challenge.goal.title
-    ) {
-      const updated: DailyChallenge = {
-        ...challenge,
-        goal: {
-          id: resolvedGoalId,
-          title: resolvedGoalTitle,
-        },
-      };
-      const payload: CachedDailyChallenge = { date: today, challenge: updated };
-      writeCachePayload(locale, payload);
-      challenge = updated;
+      if (
+        resolvedGoalId !== challenge.goal.id
+        || resolvedGoalTitle !== challenge.goal.title
+      ) {
+        const updated: DailyChallenge = {
+          ...challenge,
+          goal: {
+            id: resolvedGoalId,
+            title: resolvedGoalTitle,
+          },
+        };
+        const payload: CachedDailyChallenge = { date: today, challenge: updated };
+        writeCachePayload(locale, payload);
+        challenge = updated;
+      }
+    } catch (error) {
+      console.warn("ゴール記事の検証に失敗しました", error);
     }
-  } catch (error) {
-    console.warn("ゴール記事の検証に失敗しました", error);
   }
 
   return challenge;

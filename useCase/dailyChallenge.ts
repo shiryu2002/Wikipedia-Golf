@@ -8,6 +8,11 @@ export type DailyChallenge = {
   date: string;
   goal: DailyChallengeEntry;
   start: DailyChallengeEntry;
+  /**
+   * Indicates if this challenge was loaded from pre-generated JSON.
+   * If true, skip verification steps to improve loading speed.
+   */
+  fromJson?: boolean;
 };
 
 const DAILY_ID_MULTIPLIERS = {
@@ -53,7 +58,8 @@ const fetchDailyChallengeFromJson = async (
     // Check if the JSON file is for today and matches the requested locale
     if (data.date === today && data.locale === locale) {
       console.log(`JSONファイルから今日のデイリーチャレンジを取得しました: ${data.date}`);
-      return data;
+      // Mark as loaded from JSON to skip verification steps
+      return { ...data, fromJson: true };
     }
 
     console.log(
