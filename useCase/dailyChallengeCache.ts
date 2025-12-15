@@ -63,16 +63,23 @@ export const readCachedDailyChallenge = (
     }
     const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
     if (!cached?.challenge) {
+      console.warn("キャッシュデータが不正です。削除します。");
       window.localStorage.removeItem(key);
       return null;
     }
     if (cached.date !== today) {
+      console.log(`キャッシュが古いです (${cached.date} !== ${today})。削除します。`);
       window.localStorage.removeItem(key);
       return null;
     }
+    console.log("キャッシュからデイリーチャレンジを読み込みました");
     return cached.challenge;
   } catch (error) {
     console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
+    // Clear corrupted cache
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
     return null;
   }
 };
@@ -94,6 +101,7 @@ export const loadDailyChallengeWithCache = async (
     if (cachedRaw) {
       const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
       if (cached?.date === today && cached.challenge) {
+        console.log("ローカルストレージからデイリーチャレンジを復元しました");
         challenge = cached.challenge;
       } else {
         window.localStorage.removeItem(key);
@@ -101,6 +109,10 @@ export const loadDailyChallengeWithCache = async (
     }
   } catch (error) {
     console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
+    // Clear corrupted cache
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
   }
 
   if (!challenge) {
@@ -137,16 +149,19 @@ export const loadDailyChallengeWithCache = async (
       resolvedGoalId !== challenge.goal.id
       || resolvedGoalTitle !== challenge.goal.title
     ) {
+      console.log(`ゴール記事を更新: ${challenge.goal.title} → ${resolvedGoalTitle}`);
       const updated: DailyChallenge = {
         ...challenge,
         goal: {
           id: resolvedGoalId,
           title: resolvedGoalTitle,
         },
+        // Preserve fromJson flag if it exists
+        fromJson: challenge.fromJson,
       };
       const payload: CachedDailyChallenge = { date: today, challenge: updated };
       writeCachePayload(locale, payload);
-      challenge = updated;
+      return updated;
     }
   } catch (error) {
     console.warn("ゴール記事の検証に失敗しました", error);
