@@ -25,6 +25,44 @@ const MAX_CONCURRENT_BATCHES = 5;
 const ARTICLE_FETCH_TIMEOUT_MS = 2000;
 const ARTICLE_FETCH_MAX_ATTEMPTS = 50;
 
+const getJapanTodayIsoDate = (): string => {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+  }).format(new Date());
+};
+
+/**
+ * Fetch daily challenge from the pre-generated JSON file
+ */
+const fetchDailyChallengeFromJson = async (
+  locale: "ja" | "en",
+): Promise<DailyChallenge | null> => {
+  try {
+    const response = await fetch("/daily-challenge.json");
+    if (!response.ok) {
+      console.log("デイリーチャレンジJSONファイルが見つかりません。APIから生成します。");
+      return null;
+    }
+
+    const data: DailyChallenge = await response.json();
+    const today = getJapanTodayIsoDate();
+
+    // Check if the JSON file is for today and matches the requested locale
+    if (data.date === today && data.locale === locale) {
+      console.log(`JSONファイルから今日のデイリーチャレンジを取得しました: ${data.date}`);
+      return data;
+    }
+
+    console.log(
+      `JSONファイルの日付 (${data.date}) が今日 (${today}) と一致しないか、ロケールが異なります。APIから生成します。`
+    );
+    return null;
+  } catch (error) {
+    console.error("デイリーチャレンジJSONの読み込みに失敗しました:", error);
+    return null;
+  }
+};
+
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
   for (let index = 0; index < items.length; index += size) {
@@ -264,6 +302,14 @@ export const fetchPageParseWithFallback = async (
 export const fetchDailyChallenge = async (
   locale: "ja" | "en" = "ja",
 ): Promise<DailyChallenge> => {
+  // Try to fetch from pre-generated JSON file first
+  const jsonChallenge = await fetchDailyChallengeFromJson(locale);
+  if (jsonChallenge) {
+    return jsonChallenge;
+  }
+
+  // Fallback to API generation
+  console.log("APIからデイリーチャレンジを生成します...");
   const today = new Date();
   const isoDate = today.toISOString().slice(0, 10);
   const baseId = computeDailyBaseId(today);
