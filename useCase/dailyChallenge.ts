@@ -64,9 +64,17 @@ const getJstDate = (): Date => {
   });
   
   const parts = formatter.formatToParts(now);
-  const year = parseInt(parts.find(p => p.type === "year")?.value || "0", 10);
-  const month = parseInt(parts.find(p => p.type === "month")?.value || "0", 10);
-  const day = parseInt(parts.find(p => p.type === "day")?.value || "0", 10);
+  const yearPart = parts.find(p => p.type === "year")?.value;
+  const monthPart = parts.find(p => p.type === "month")?.value;
+  const dayPart = parts.find(p => p.type === "day")?.value;
+  
+  if (!yearPart || !monthPart || !dayPart) {
+    throw new Error("日付コンポーネントの取得に失敗しました");
+  }
+  
+  const year = parseInt(yearPart, 10);
+  const month = parseInt(monthPart, 10);
+  const day = parseInt(dayPart, 10);
   
   // Create a Date object representing midnight JST for the current day
   return new Date(year, month - 1, day);
