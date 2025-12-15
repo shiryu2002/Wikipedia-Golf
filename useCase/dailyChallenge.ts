@@ -9,8 +9,16 @@ export type DailyChallenge = {
   goal: DailyChallengeEntry;
   start: DailyChallengeEntry;
   /**
-   * Indicates if this challenge was loaded from pre-generated JSON.
-   * If true, skip verification steps to improve loading speed.
+   * Indicates if this challenge was loaded from pre-generated JSON file.
+   * 
+   * When true:
+   * - Set by `fetchDailyChallengeFromJson` when loading from `/daily-challenge.json`
+   * - Causes `loadDailyChallengeWithCache` to skip goal article verification via Wikipedia API
+   * - Improves loading speed by eliminating unnecessary API call (~1s saved)
+   * 
+   * When false/undefined:
+   * - Challenge was generated via API fallback
+   * - Goal article will be verified to ensure it's valid and parseable
    */
   fromJson?: boolean;
 };
