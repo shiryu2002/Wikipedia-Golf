@@ -25,7 +25,10 @@ const MAX_CONCURRENT_BATCHES = 5;
 const ARTICLE_FETCH_TIMEOUT_MS = 2000;
 const ARTICLE_FETCH_MAX_ATTEMPTS = 50;
 
-const getJapanTodayIsoDate = (): string => {
+/**
+ * Get current date in YYYY-MM-DD format for JST timezone
+ */
+const getJstDateString = (): string => {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
   }).format(new Date());
@@ -45,7 +48,7 @@ const fetchDailyChallengeFromJson = async (
     }
 
     const data: DailyChallenge = await response.json();
-    const today = getJapanTodayIsoDate();
+    const today = getJstDateString();
 
     // Check if the JSON file is for today and matches the requested locale
     if (data.date === today && data.locale === locale) {

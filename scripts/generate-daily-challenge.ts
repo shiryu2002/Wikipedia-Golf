@@ -137,6 +137,11 @@ const findValidArticlePage = async (
   throw new Error(`Could not resolve a valid Wikipedia article near id ${baseId}`);
 };
 
+/**
+ * Compute a base page ID from the given date.
+ * The formula creates a pseudo-random but deterministic ID based on date components.
+ * The final multiplication by day adds additional variation to spread IDs across the Wikipedia page ID space.
+ */
 const computeDailyBaseId = (date: Date): number => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -146,13 +151,29 @@ const computeDailyBaseId = (date: Date): number => {
   return result;
 };
 
+/**
+ * Get the current date in JST timezone as a Date object.
+ * This function properly handles timezone conversion by formatting the date
+ * components individually in JST and constructing a new Date.
+ */
 const getJapanTodayDate = (): Date => {
-  // Get current time in JST (Asia/Tokyo)
   const now = new Date();
-  const jstDate = new Date(
-    now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" })
-  );
-  return jstDate;
+  
+  // Get date components in JST timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const year = parseInt(parts.find(p => p.type === "year")?.value || "0", 10);
+  const month = parseInt(parts.find(p => p.type === "month")?.value || "0", 10);
+  const day = parseInt(parts.find(p => p.type === "day")?.value || "0", 10);
+  
+  // Create a Date object representing midnight JST for the current day
+  return new Date(year, month - 1, day);
 };
 
 const generateDailyChallenge = async (

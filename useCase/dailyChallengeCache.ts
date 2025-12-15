@@ -10,7 +10,10 @@ const buildStorageKey = (locale: "ja" | "en") => `${STORAGE_PREFIX}:${locale}`;
 
 const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 
-const getJapanTodayIsoDate = (): string => {
+/**
+ * Get current date in YYYY-MM-DD format for JST timezone
+ */
+const getJstDateString = (): string => {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
   }).format(new Date());
@@ -37,7 +40,7 @@ export const writeDailyChallengeCache = (
   challenge: DailyChallenge,
 ) => {
   const payload: CachedDailyChallenge = {
-    date: getJapanTodayIsoDate(),
+    date: getJstDateString(),
     challenge,
   };
   writeCachePayload(locale, payload);
@@ -51,7 +54,7 @@ export const readCachedDailyChallenge = (
   }
 
   const key = buildStorageKey(locale);
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
 
   try {
     const cachedRaw = window.localStorage.getItem(key);
@@ -78,7 +81,7 @@ export const loadDailyChallengeWithCache = async (
   locale: "ja" | "en",
 ): Promise<DailyChallenge> => {
   const key = buildStorageKey(locale);
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
 
   if (!canUseStorage()) {
     return fetchDailyChallenge(locale);
@@ -148,7 +151,7 @@ export const loadDailyChallengeWithCache = async (
 export const clearExpiredDailyChallengeCache = () => {
   if (!canUseStorage()) return;
 
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
   const prefix = `${STORAGE_PREFIX}:`;
 
   try {
