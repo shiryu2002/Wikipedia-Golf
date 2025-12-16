@@ -91,7 +91,7 @@ export default function Home() {
   const [showStartSuggestions, setShowStartSuggestions] = useState(false);
   const [showGoalSuggestions, setShowGoalSuggestions] = useState(false);
   const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
-  const [isHintMode, setIsHintMode] = useState(false);
+  const [isHintMode, setIsHintMode] = useState(true);
 
   const {
     suggestions: startSuggestions,
