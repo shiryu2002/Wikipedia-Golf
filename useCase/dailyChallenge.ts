@@ -8,6 +8,19 @@ export type DailyChallenge = {
   date: string;
   goal: DailyChallengeEntry;
   start: DailyChallengeEntry;
+  /**
+   * Indicates if this challenge was loaded from pre-generated JSON file.
+   * 
+   * When true:
+   * - Set by `fetchDailyChallengeFromJson` when loading from `/daily-challenge.json`
+   * - Causes `loadDailyChallengeWithCache` to skip goal article verification via Wikipedia API
+   * - Improves loading speed by eliminating unnecessary API call (~1s saved)
+   * 
+   * When false/undefined:
+   * - Challenge was generated via API fallback
+   * - Goal article will be verified to ensure it's valid and parseable
+   */
+  fromJson?: boolean;
 };
 
 const DAILY_ID_MULTIPLIERS = {
@@ -24,6 +37,88 @@ const PAGEID_CHUNK_SIZE = 50;
 const MAX_CONCURRENT_BATCHES = 5;
 const ARTICLE_FETCH_TIMEOUT_MS = 2000;
 const ARTICLE_FETCH_MAX_ATTEMPTS = 50;
+
+/**
+ * Get current date in YYYY-MM-DD format for JST timezone
+ */
+const getJstDateString = (): string => {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+  }).format(new Date());
+};
+
+/**
+ * Get the current date in JST timezone as a Date object.
+ * This function properly handles timezone conversion by formatting the date
+ * components individually in JST and constructing a new Date.
+ */
+const getJstDate = (): Date => {
+  const now = new Date();
+  
+  // Get date components in JST timezone
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  
+  const parts = formatter.formatToParts(now);
+  const yearPart = parts.find(p => p.type === "year")?.value;
+  const monthPart = parts.find(p => p.type === "month")?.value;
+  const dayPart = parts.find(p => p.type === "day")?.value;
+  
+  if (!yearPart || !monthPart || !dayPart) {
+    throw new Error("日付コンポーネントの取得に失敗しました");
+  }
+  
+  const year = parseInt(yearPart, 10);
+  const month = parseInt(monthPart, 10);
+  const day = parseInt(dayPart, 10);
+  
+  // Create a Date object representing midnight JST for the current day
+  return new Date(year, month - 1, day);
+};
+
+/**
+ * Fetch daily challenge from the pre-generated JSON file
+ */
+const fetchDailyChallengeFromJson = async (
+  locale: "ja" | "en",
+): Promise<DailyChallenge | null> => {
+  try {
+    const response = await fetch("/daily-challenge.json");
+    if (!response.ok) {
+      console.log("デイリーチャレンジJSONファイルが見つかりません。APIから生成します。");
+      return null;
+    }
+
+    const data: DailyChallenge = await response.json();
+    
+    // Validate the data structure
+    if (!data || !data.date || !data.locale || !data.goal || !data.start) {
+      console.error("JSONファイルの構造が不正です。APIから生成します。");
+      return null;
+    }
+
+    const today = getJstDateString();
+
+    // Check if the JSON file is for today and matches the requested locale
+    if (data.date === today && data.locale === locale) {
+      console.log(`JSONファイルから今日のデイリーチャレンジを取得しました: ${data.date}`);
+      // Mark as loaded from JSON to skip verification steps
+      return { ...data, fromJson: true };
+    }
+
+    console.log(
+      `JSONファイルの日付 (${data.date}) が今日 (${today}) と一致しないか、ロケールが異なります (要求: ${locale})。APIから生成します。`
+    );
+    return null;
+  } catch (error) {
+    console.error("デイリーチャレンジJSONの読み込みに失敗しました:", error);
+    return null;
+  }
+};
 
 const chunkArray = <T,>(items: T[], size: number): T[][] => {
   const chunks: T[][] = [];
@@ -68,6 +163,27 @@ const fetchPageMetaBatch = async (
   return json?.query?.pages ?? {};
 };
 
+/**
+ * Check if a page is a valid article page (not a category, user page, etc.)
+ */
+const isValidArticlePage = (page: any): boolean => {
+  // Check if page exists
+  if (!page || page.missing || page.invalid) {
+    return false;
+  }
+
+  // Check if it's in the main article namespace (namespace 0)
+  // Namespace 0 = main articles
+  // Other namespaces: 1=Talk, 2=User, 3=User talk, 6=File, 10=Template, 14=Category, etc.
+  const ARTICLE_NAMESPACE = 0;
+  if (page.ns !== undefined && page.ns !== ARTICLE_NAMESPACE) {
+    console.log(`記事ID ${page.pageid} (${page.title}) は名前空間 ${page.ns} です。スキップします。`);
+    return false;
+  }
+
+  return true;
+};
+
 const findExistingPage = async (
   locale: "ja" | "en",
   baseId: number,
@@ -97,7 +213,8 @@ const findExistingPage = async (
 
       for (const candidateId of chunk) {
         const page = pages?.[String(candidateId)];
-        if (page && !page.missing && !page.invalid) {
+        if (isValidArticlePage(page)) {
+          console.log(`✓ 有効な記事を発見: ID ${page.pageid} - ${page.title}`);
           return {
             id: page.pageid ?? candidateId,
             title: page.title,
@@ -119,11 +236,11 @@ const findParseablePage = async (
   // Try each candidate ID to find one that can be parsed
   for (const candidateId of candidates) {
     try {
-      // First check if the page exists
+      // First check if the page exists and is a valid article
       const metaResult = await fetchPageMetaBatch(locale, [candidateId]);
       const page = metaResult?.[String(candidateId)];
       
-      if (page && !page.missing && !page.invalid) {
+      if (isValidArticlePage(page)) {
         const pageTitle = page.title;
         const pageId = page.pageid ?? candidateId;
         
@@ -135,6 +252,7 @@ const findParseablePage = async (
           }, { maxAttempts: 1 });
           
           // If we got here, the page is parseable
+          console.log(`✓ パース可能な記事を発見: ID ${pageId} - ${pageTitle}`);
           return {
             id: pageId,
             title: pageTitle,
@@ -154,6 +272,11 @@ const findParseablePage = async (
   throw new Error(`Could not resolve a parseable Wikipedia page near id ${baseId}`);
 };
 
+/**
+ * Compute a base page ID from the given date.
+ * The formula creates a pseudo-random but deterministic ID based on date components.
+ * The final multiplication by day adds additional variation to spread IDs across the Wikipedia page ID space.
+ */
 const computeDailyBaseId = (date: Date): number => {
   const year = date.getFullYear();
   const month = date.getMonth() + 1;
@@ -264,9 +387,19 @@ export const fetchPageParseWithFallback = async (
 export const fetchDailyChallenge = async (
   locale: "ja" | "en" = "ja",
 ): Promise<DailyChallenge> => {
-  const today = new Date();
-  const isoDate = today.toISOString().slice(0, 10);
+  // Try to fetch from pre-generated JSON file first
+  const jsonChallenge = await fetchDailyChallengeFromJson(locale);
+  if (jsonChallenge) {
+    return jsonChallenge;
+  }
+
+  // Fallback to API generation using JST date
+  console.log("APIからデイリーチャレンジを生成します...");
+  const today = getJstDate();
+  const isoDate = getJstDateString();
   const baseId = computeDailyBaseId(today);
+
+  console.log(`日付: ${isoDate}, ベースID: ${baseId}`);
 
   const goal = await findExistingPage(locale, baseId + 100);
   const start = await findParseablePage(locale, goal.id + 1000);

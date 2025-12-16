@@ -10,7 +10,10 @@ const buildStorageKey = (locale: "ja" | "en") => `${STORAGE_PREFIX}:${locale}`;
 
 const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined";
 
-const getJapanTodayIsoDate = (): string => {
+/**
+ * Get current date in YYYY-MM-DD format for JST timezone
+ */
+const getJstDateString = (): string => {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
   }).format(new Date());
@@ -37,7 +40,7 @@ export const writeDailyChallengeCache = (
   challenge: DailyChallenge,
 ) => {
   const payload: CachedDailyChallenge = {
-    date: getJapanTodayIsoDate(),
+    date: getJstDateString(),
     challenge,
   };
   writeCachePayload(locale, payload);
@@ -51,7 +54,7 @@ export const readCachedDailyChallenge = (
   }
 
   const key = buildStorageKey(locale);
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
 
   try {
     const cachedRaw = window.localStorage.getItem(key);
@@ -60,16 +63,23 @@ export const readCachedDailyChallenge = (
     }
     const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
     if (!cached?.challenge) {
+      console.warn("キャッシュデータが不正です。削除します。");
       window.localStorage.removeItem(key);
       return null;
     }
     if (cached.date !== today) {
+      console.log(`キャッシュが古いです (${cached.date} !== ${today})。削除します。`);
       window.localStorage.removeItem(key);
       return null;
     }
+    console.log("キャッシュからデイリーチャレンジを読み込みました");
     return cached.challenge;
   } catch (error) {
     console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
+    // Clear corrupted cache
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
     return null;
   }
 };
@@ -78,7 +88,7 @@ export const loadDailyChallengeWithCache = async (
   locale: "ja" | "en",
 ): Promise<DailyChallenge> => {
   const key = buildStorageKey(locale);
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
 
   if (!canUseStorage()) {
     return fetchDailyChallenge(locale);
@@ -91,6 +101,7 @@ export const loadDailyChallengeWithCache = async (
     if (cachedRaw) {
       const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
       if (cached?.date === today && cached.challenge) {
+        console.log("ローカルストレージからデイリーチャレンジを復元しました");
         challenge = cached.challenge;
       } else {
         window.localStorage.removeItem(key);
@@ -98,6 +109,10 @@ export const loadDailyChallengeWithCache = async (
     }
   } catch (error) {
     console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
+    // Clear corrupted cache
+    try {
+      window.localStorage.removeItem(key);
+    } catch {}
   }
 
   if (!challenge) {
@@ -115,6 +130,13 @@ export const loadDailyChallengeWithCache = async (
     throw new Error("デイリーチャレンジを解決できませんでした");
   }
 
+  // Skip verification if the challenge was loaded from pre-generated JSON
+  // to avoid unnecessary API calls and improve loading speed
+  if (challenge.fromJson) {
+    return challenge;
+  }
+
+  // Verify goal article for API-generated challenges
   try {
     const goalParse = await fetchPageParseWithFallback(locale, {
       id: challenge.goal.id,
@@ -127,16 +149,19 @@ export const loadDailyChallengeWithCache = async (
       resolvedGoalId !== challenge.goal.id
       || resolvedGoalTitle !== challenge.goal.title
     ) {
+      console.log(`ゴール記事を更新: ${challenge.goal.title} → ${resolvedGoalTitle}`);
       const updated: DailyChallenge = {
         ...challenge,
         goal: {
           id: resolvedGoalId,
           title: resolvedGoalTitle,
         },
+        // Preserve fromJson flag if it exists
+        fromJson: challenge.fromJson,
       };
       const payload: CachedDailyChallenge = { date: today, challenge: updated };
       writeCachePayload(locale, payload);
-      challenge = updated;
+      return updated;
     }
   } catch (error) {
     console.warn("ゴール記事の検証に失敗しました", error);
@@ -148,7 +173,7 @@ export const loadDailyChallengeWithCache = async (
 export const clearExpiredDailyChallengeCache = () => {
   if (!canUseStorage()) return;
 
-  const today = getJapanTodayIsoDate();
+  const today = getJstDateString();
   const prefix = `${STORAGE_PREFIX}:`;
 
   try {

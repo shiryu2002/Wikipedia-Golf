@@ -1,0 +1,36 @@
+name: Update Daily Challenge
+
+on:
+  schedule:
+    # Run at midnight JST (15:00 UTC) every day
+    - cron: '0 15 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-challenge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate daily challenge
+        run: npx tsx scripts/generate-daily-challenge.ts public/daily-challenge.json
+
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add public/daily-challenge.json
+          git diff --staged --quiet || git commit -m "chore: update daily challenge for $(TZ=Asia/Tokyo date +%Y-%m-%d)"
+          git push
