@@ -674,8 +674,8 @@ export default function GamePage() {
   const shouldShowDailyStartup = isDailyStartup && !isGoalDetailsView;
   const startArticleTitle = history.length > 0
     ? history[0].title
-    : title || dailyChallenge?.start.title || "未設定";
-  const headerGoalTitle = goal || dailyChallenge?.goal.title || "未設定";
+    : title || (isDailyMode ? dailyChallenge?.start.title : null) || "未設定";
+  const headerGoalTitle = goal || (isDailyMode ? dailyChallenge?.goal.title : null) || "未設定";
   const canToggleGoal = Boolean(goal);
   const isCustomMode = !isDailyMode && gameState === "playing" && goal && title;
 
