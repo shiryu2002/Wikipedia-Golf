@@ -167,11 +167,13 @@ export default function GamePage() {
   }) => {
     const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
-    const incomingCacheKey = options.pageId !== undefined
+    
+    // Use a single canonical cache key based on pageId if available, otherwise title
+    const canonicalCacheKey = options.pageId !== undefined
       ? `${activeLocale}:goal:id:${options.pageId}`
       : `${activeLocale}:goal:title:${options.title}`;
 
-    const cached = goalDetailsCacheRef.current.get(incomingCacheKey);
+    const cached = goalDetailsCacheRef.current.get(canonicalCacheKey);
     if (cached) {
       setNumOfReferer(cached.numOfRef);
       setHints(cached.hints);
@@ -197,10 +199,17 @@ export default function GamePage() {
         hints: normalizedHints,
       };
 
-      goalDetailsCacheRef.current.set(incomingCacheKey, entry);
-      goalDetailsCacheRef.current.set(`${activeLocale}:goal:title:${goalArticle.title}`, entry);
-      if (resolvedGoalId !== undefined) {
-        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
+      // Store with canonical key only to avoid cache inconsistency
+      goalDetailsCacheRef.current.set(canonicalCacheKey, entry);
+      // Also add an alias for the resolved ID if we have one and it's useful
+      if (resolvedGoalId !== undefined && options.pageId === undefined) {
+        // When called with title only, also cache by resolved ID
+        const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
+        goalDetailsCacheRef.current.set(resolvedKey, entry);
+      } else if (resolvedGoalId !== undefined && resolvedGoalId !== options.pageId) {
+        // When resolved ID differs from input ID, cache both
+        const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
+        goalDetailsCacheRef.current.set(resolvedKey, entry);
       }
 
       setGoal(goalArticle.title);
@@ -586,15 +595,18 @@ export default function GamePage() {
   };
 
   useEffect(() => {
+    let isCancelled = false;
+    
+    // Clear expired cache first
     clearExpiredDailyChallengeCache();
+    
+    // Try to load from cache immediately for faster initial display
     const cached = readCachedDailyChallenge(locale);
-    if (cached) {
+    if (cached && !isCancelled) {
       setDailyChallenge(cached);
     }
-  }, [locale]);
 
-  useEffect(() => {
-    let isCancelled = false;
+    // Then load/refresh from server
     const loadChallenge = async () => {
       try {
         const challenge = await loadDailyChallengeWithCache(locale);
@@ -674,8 +686,8 @@ export default function GamePage() {
   const shouldShowDailyStartup = isDailyStartup && !isGoalDetailsView;
   const startArticleTitle = history.length > 0
     ? history[0].title
-    : title || dailyChallenge?.start.title || "未設定";
-  const headerGoalTitle = goal || dailyChallenge?.goal.title || "未設定";
+    : title || (isDailyMode ? dailyChallenge?.start.title : null) || "未設定";
+  const headerGoalTitle = goal || (isDailyMode ? dailyChallenge?.goal.title : null) || "未設定";
   const canToggleGoal = Boolean(goal);
   const isCustomMode = !isDailyMode && gameState === "playing" && goal && title;
 

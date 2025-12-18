@@ -130,8 +130,75 @@ export const loadDailyChallengeWithCache = async (
     throw new Error("デイリーチャレンジを解決できませんでした");
   }
 
+  // Check if goal or start titles are missing (incomplete data)
+  const missingGoalTitle = !challenge.goal.title?.trim();
+  const missingStartTitle = !challenge.start.title?.trim();
+
+  // If data is incomplete, fetch missing information
+  if (missingGoalTitle || missingStartTitle) {
+    console.log("チャレンジデータが不完全です。不足している情報を取得します...");
+    let updatedGoal = challenge.goal;
+    let updatedStart = challenge.start;
+    let hasMissingData = false;
+
+    // Fetch goal title if missing
+    if (missingGoalTitle) {
+      try {
+        const goalParse = await fetchPageParseWithFallback(locale, {
+          id: challenge.goal.id,
+          title: challenge.goal.title ?? "",
+        });
+        updatedGoal = {
+          id: goalParse.id ?? challenge.goal.id,
+          title: goalParse.title,
+        };
+        console.log(`ゴールタイトルを取得: ${updatedGoal.title}`);
+      } catch (error) {
+        console.error("ゴールタイトルの取得に失敗しました", error);
+        // Keep the ID even if title fetch fails for potential retry
+        hasMissingData = true;
+      }
+    }
+
+    // Fetch start title if missing
+    if (missingStartTitle) {
+      try {
+        const startParse = await fetchPageParseWithFallback(locale, {
+          id: challenge.start.id,
+          title: challenge.start.title ?? "",
+        });
+        updatedStart = {
+          id: startParse.id ?? challenge.start.id,
+          title: startParse.title,
+        };
+        console.log(`スタートタイトルを取得: ${updatedStart.title}`);
+      } catch (error) {
+        console.error("スタートタイトルの取得に失敗しました", error);
+        // Keep the ID even if title fetch fails for potential retry
+        hasMissingData = true;
+      }
+    }
+
+    // Always update cache with whatever data we have
+    const updated: DailyChallenge = {
+      ...challenge,
+      goal: updatedGoal,
+      start: updatedStart,
+    };
+    const payload: CachedDailyChallenge = { date: today, challenge: updated };
+    writeCachePayload(locale, payload);
+
+    // If we still have missing data after fetch attempts, throw error
+    // Only throw if both attempts failed AND we don't have titles
+    if (!updatedGoal.title || !updatedStart.title) {
+      throw new Error("タイトル情報の取得に失敗しました。デイリーチャレンジを完全に読み込めません。");
+    }
+
+    return updated;
+  }
+
   // Skip verification if the challenge was loaded from pre-generated JSON
-  // to avoid unnecessary API calls and improve loading speed
+  // and data is complete to avoid unnecessary API calls
   if (challenge.fromJson) {
     return challenge;
   }
