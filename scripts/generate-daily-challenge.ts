@@ -95,7 +95,7 @@ const fetchPageMetaBatch = async (
     } catch (error) {
       if (attempt < retries - 1) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
-        console.log(`リトライ ${attempt + 1}/${retries - 1} - ${waitTime}ms 待機中...`);
+        console.log(`Retry ${attempt + 1}/${retries - 1} - waiting ${waitTime}ms...`);
         await sleep(waitTime);
       } else {
         throw error;
@@ -103,6 +103,7 @@ const fetchPageMetaBatch = async (
     }
   }
   
+  // TypeScript requires a return/throw here, though this is unreachable in practice
   throw new Error(`Failed to fetch after ${retries} attempts`);
 };
 
