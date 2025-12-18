@@ -28,7 +28,7 @@ const DAILY_ID_MULTIPLIERS = {
 const API_BASE = (locale: "ja" | "en") =>
   `https://${locale}.wikipedia.org/w/api.php`;
 
-const MAX_SEARCH_OFFSET = 500;
+const MAX_SEARCH_OFFSET = 5000; // Increased from 500 to handle sparse article ID ranges
 const PAGEID_CHUNK_SIZE = 50;
 const MAX_CONCURRENT_BATCHES = 1; // Reduced from 5 to avoid rate limiting
 
