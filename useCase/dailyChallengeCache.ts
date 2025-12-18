@@ -189,7 +189,8 @@ export const loadDailyChallengeWithCache = async (
     writeCachePayload(locale, payload);
 
     // If we still have missing data after fetch attempts, throw error
-    if (hasMissingData && (!updatedGoal.title || !updatedStart.title)) {
+    // Only throw if both attempts failed AND we don't have titles
+    if (!updatedGoal.title || !updatedStart.title) {
       throw new Error("タイトル情報の取得に失敗しました。デイリーチャレンジを完全に読み込めません。");
     }
 

@@ -201,8 +201,13 @@ export default function GamePage() {
 
       // Store with canonical key only to avoid cache inconsistency
       goalDetailsCacheRef.current.set(canonicalCacheKey, entry);
-      // Also add an alias for the resolved ID if it's different from the input
-      if (resolvedGoalId !== undefined && resolvedGoalId !== options.pageId) {
+      // Also add an alias for the resolved ID if we have one and it's useful
+      if (resolvedGoalId !== undefined && options.pageId === undefined) {
+        // When called with title only, also cache by resolved ID
+        const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
+        goalDetailsCacheRef.current.set(resolvedKey, entry);
+      } else if (resolvedGoalId !== undefined && resolvedGoalId !== options.pageId) {
+        // When resolved ID differs from input ID, cache both
         const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
         goalDetailsCacheRef.current.set(resolvedKey, entry);
       }
