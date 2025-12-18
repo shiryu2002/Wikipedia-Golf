@@ -60,23 +60,46 @@ const buildCandidateIds = (baseId: number): number[] => {
   return ids;
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const fetchPageMetaBatch = async (
   locale: "ja" | "en",
   pageIds: number[],
+  retries = 3,
 ): Promise<Record<string, any>> => {
   const queryIds = pageIds.join("|");
   const url = `${API_BASE(locale)}?action=query&format=json&pageids=${queryIds}&origin=*`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch page metadata for ids: ${queryIds}`);
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unable to read response body");
+        throw new Error(
+          `Failed to fetch page metadata (HTTP ${response.status}): ${errorText.slice(0, 200)}`
+        );
+      }
+      
+      const json = await response.json();
+      if (json?.error) {
+        throw new Error(
+          `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"} - ${json.error.info ?? ""}`,
+        );
+      }
+      return json?.query?.pages ?? {};
+    } catch (error) {
+      if (attempt < retries - 1) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`リトライ ${attempt + 1}/${retries - 1} - ${waitTime}ms 待機中...`);
+        await sleep(waitTime);
+      } else {
+        throw error;
+      }
+    }
   }
-  const json = await response.json();
-  if (json?.error) {
-    throw new Error(
-      `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"}`,
-    );
-  }
-  return json?.query?.pages ?? {};
+  
+  throw new Error(`Failed to fetch after ${retries} attempts`);
 };
 
 const isValidArticlePage = (page: any): boolean => {
@@ -117,6 +140,12 @@ const findValidArticlePage = async (
 
   for (let index = 0; index < candidateChunks.length; index += MAX_CONCURRENT_BATCHES) {
     const chunkBatch = candidateChunks.slice(index, index + MAX_CONCURRENT_BATCHES);
+    
+    // Add delay between batches to avoid rate limiting
+    if (index > 0) {
+      await sleep(500); // 500ms delay between batch groups
+    }
+    
     const batchResults = await Promise.all(
       chunkBatch.map(async (chunk) => {
         try {
