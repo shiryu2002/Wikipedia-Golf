@@ -85,21 +85,23 @@ const isValidArticlePage = (page: any): boolean => {
     return false;
   }
 
-  // Check if it's in the main article namespace (namespace 0)
-  if (page.ns !== undefined && page.ns !== ARTICLE_NAMESPACE) {
-    console.log(`記事ID ${page.pageid} (${page.title}) は名前空間 ${page.ns} です。スキップします。`);
-    return false;
-  }
-
   // Check if the page has a title (required for JSON serialization)
   if (!page.title) {
     console.log(`記事ID ${page.pageid} にタイトルがありません。スキップします。`);
     return false;
   }
 
-  // Check if the page title contains "削除依頼" (deletion request)
-  if (page.title.includes("削除依頼")) {
-    console.log(`記事ID ${page.pageid} (${page.title}) は削除依頼ページです。スキップします。`);
+  // Check if the page title contains "削除依頼" or starts with "Wikipedia:" prefix
+  // This catches both regular deletion requests and Wikipedia namespace pages
+  if (page.title.includes("削除依頼") || page.title.startsWith("Wikipedia:")) {
+    console.log(`記事ID ${page.pageid} (${page.title}) は削除依頼またはWikipedia名前空間ページです。スキップします。`);
+    return false;
+  }
+
+  // Check if it's in the main article namespace (namespace 0)
+  // This is a secondary check in case namespace info is available
+  if (page.ns !== undefined && page.ns !== ARTICLE_NAMESPACE) {
+    console.log(`記事ID ${page.pageid} (${page.title}) は名前空間 ${page.ns} です。スキップします。`);
     return false;
   }
 
