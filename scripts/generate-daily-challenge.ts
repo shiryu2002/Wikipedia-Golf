@@ -124,6 +124,11 @@ const findValidArticlePage = async (
       for (const candidateId of chunk) {
         const page = pages?.[String(candidateId)];
         if (isValidArticlePage(page)) {
+          // Ensure the page has a title before returning
+          if (!page.title) {
+            console.log(`記事ID ${page.pageid ?? candidateId} にタイトルがありません。スキップします。`);
+            continue;
+          }
           console.log(`✓ 有効な記事を発見: ID ${page.pageid} - ${page.title}`);
           return {
             id: page.pageid ?? candidateId,
