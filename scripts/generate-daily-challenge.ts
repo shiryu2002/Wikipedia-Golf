@@ -30,7 +30,7 @@ const API_BASE = (locale: "ja" | "en") =>
 
 const MAX_SEARCH_OFFSET = 500;
 const PAGEID_CHUNK_SIZE = 50;
-const MAX_CONCURRENT_BATCHES = 5;
+const MAX_CONCURRENT_BATCHES = 1; // Reduced from 5 to avoid rate limiting
 
 // Namespace 0 is main article namespace
 // Other namespaces include: 1=Talk, 2=User, 3=User talk, 6=File, 10=Template, 14=Category, etc.
@@ -72,7 +72,11 @@ const fetchPageMetaBatch = async (
   
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Wikipedia-Golf-Daily-Challenge/1.0 (https://github.com/shiryu2002/Wikipedia-Golf)',
+        },
+      });
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unable to read response body");
@@ -143,7 +147,7 @@ const findValidArticlePage = async (
     
     // Add delay between batches to avoid rate limiting
     if (index > 0) {
-      await sleep(500); // 500ms delay between batch groups
+      await sleep(1000); // 1 second delay between batch groups
     }
     
     const batchResults = await Promise.all(
