@@ -28,9 +28,9 @@ const DAILY_ID_MULTIPLIERS = {
 const API_BASE = (locale: "ja" | "en") =>
   `https://${locale}.wikipedia.org/w/api.php`;
 
-const MAX_SEARCH_OFFSET = 500;
+const MAX_SEARCH_OFFSET = 5000; // Increased from 500 to handle sparse article ID ranges
 const PAGEID_CHUNK_SIZE = 50;
-const MAX_CONCURRENT_BATCHES = 5;
+const MAX_CONCURRENT_BATCHES = 1; // Reduced from 5 to avoid rate limiting
 
 // Namespace 0 is main article namespace
 // Other namespaces include: 1=Talk, 2=User, 3=User talk, 6=File, 10=Template, 14=Category, etc.
@@ -60,23 +60,51 @@ const buildCandidateIds = (baseId: number): number[] => {
   return ids;
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const fetchPageMetaBatch = async (
   locale: "ja" | "en",
   pageIds: number[],
+  retries = 3,
 ): Promise<Record<string, any>> => {
   const queryIds = pageIds.join("|");
   const url = `${API_BASE(locale)}?action=query&format=json&pageids=${queryIds}&origin=*`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch page metadata for ids: ${queryIds}`);
+  
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Wikipedia-Golf-Daily-Challenge/1.0 (https://github.com/shiryu2002/Wikipedia-Golf)',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unable to read response body");
+        throw new Error(
+          `Failed to fetch page metadata (HTTP ${response.status}): ${errorText.slice(0, 200)}`
+        );
+      }
+      
+      const json = await response.json();
+      if (json?.error) {
+        throw new Error(
+          `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"} - ${json.error.info ?? ""}`,
+        );
+      }
+      return json?.query?.pages ?? {};
+    } catch (error) {
+      if (attempt < retries - 1) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`Retry ${attempt + 1}/${retries - 1} - waiting ${waitTime}ms...`);
+        await sleep(waitTime);
+      } else {
+        throw error;
+      }
+    }
   }
-  const json = await response.json();
-  if (json?.error) {
-    throw new Error(
-      `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"}`,
-    );
-  }
-  return json?.query?.pages ?? {};
+  
+  // TypeScript requires a return/throw here, though this is unreachable in practice
+  throw new Error(`Failed to fetch after ${retries} attempts`);
 };
 
 const isValidArticlePage = (page: any): boolean => {
@@ -117,6 +145,12 @@ const findValidArticlePage = async (
 
   for (let index = 0; index < candidateChunks.length; index += MAX_CONCURRENT_BATCHES) {
     const chunkBatch = candidateChunks.slice(index, index + MAX_CONCURRENT_BATCHES);
+    
+    // Add delay between batches to avoid rate limiting
+    if (index > 0) {
+      await sleep(1000); // 1 second delay between batch groups
+    }
+    
     const batchResults = await Promise.all(
       chunkBatch.map(async (chunk) => {
         try {
