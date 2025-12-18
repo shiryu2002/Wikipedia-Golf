@@ -131,8 +131,8 @@ export const loadDailyChallengeWithCache = async (
   }
 
   // Check if goal or start titles are missing (incomplete data)
-  const missingGoalTitle = !challenge.goal.title;
-  const missingStartTitle = !challenge.start.title;
+  const missingGoalTitle = !challenge.goal.title?.trim();
+  const missingStartTitle = !challenge.start.title?.trim();
 
   // If data is incomplete, fetch missing information
   if (missingGoalTitle || missingStartTitle) {
@@ -146,7 +146,7 @@ export const loadDailyChallengeWithCache = async (
       try {
         const goalParse = await fetchPageParseWithFallback(locale, {
           id: challenge.goal.id,
-          title: challenge.goal.title || "",
+          title: challenge.goal.title ?? "",
         });
         updatedGoal = {
           id: goalParse.id ?? challenge.goal.id,
@@ -164,7 +164,7 @@ export const loadDailyChallengeWithCache = async (
       try {
         const startParse = await fetchPageParseWithFallback(locale, {
           id: challenge.start.id,
-          title: challenge.start.title || "",
+          title: challenge.start.title ?? "",
         });
         updatedStart = {
           id: startParse.id ?? challenge.start.id,
@@ -183,7 +183,6 @@ export const loadDailyChallengeWithCache = async (
         ...challenge,
         goal: updatedGoal,
         start: updatedStart,
-        fromJson: challenge.fromJson,
       };
       const payload: CachedDailyChallenge = { date: today, challenge: updated };
       writeCachePayload(locale, payload);
