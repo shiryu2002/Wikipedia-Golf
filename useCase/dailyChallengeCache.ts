@@ -137,9 +137,9 @@ export const loadDailyChallengeWithCache = async (
   // If data is incomplete, fetch missing information
   if (missingGoalTitle || missingStartTitle) {
     console.log("チャレンジデータが不完全です。不足している情報を取得します...");
-    let needsUpdate = false;
     let updatedGoal = challenge.goal;
     let updatedStart = challenge.start;
+    let hasMissingData = false;
 
     // Fetch goal title if missing
     if (missingGoalTitle) {
@@ -153,9 +153,10 @@ export const loadDailyChallengeWithCache = async (
           title: goalParse.title,
         };
         console.log(`ゴールタイトルを取得: ${updatedGoal.title}`);
-        needsUpdate = true;
       } catch (error) {
         console.error("ゴールタイトルの取得に失敗しました", error);
+        // Keep the ID even if title fetch fails for potential retry
+        hasMissingData = true;
       }
     }
 
@@ -171,23 +172,28 @@ export const loadDailyChallengeWithCache = async (
           title: startParse.title,
         };
         console.log(`スタートタイトルを取得: ${updatedStart.title}`);
-        needsUpdate = true;
       } catch (error) {
         console.error("スタートタイトルの取得に失敗しました", error);
+        // Keep the ID even if title fetch fails for potential retry
+        hasMissingData = true;
       }
     }
 
-    // Update cache with complete data
-    if (needsUpdate) {
-      const updated: DailyChallenge = {
-        ...challenge,
-        goal: updatedGoal,
-        start: updatedStart,
-      };
-      const payload: CachedDailyChallenge = { date: today, challenge: updated };
-      writeCachePayload(locale, payload);
-      return updated;
+    // Always update cache with whatever data we have
+    const updated: DailyChallenge = {
+      ...challenge,
+      goal: updatedGoal,
+      start: updatedStart,
+    };
+    const payload: CachedDailyChallenge = { date: today, challenge: updated };
+    writeCachePayload(locale, payload);
+
+    // If we still have missing data after fetch attempts, throw error
+    if (hasMissingData && (!updatedGoal.title || !updatedStart.title)) {
+      throw new Error("タイトル情報の取得に失敗しました。デイリーチャレンジを完全に読み込めません。");
     }
+
+    return updated;
   }
 
   // Skip verification if the challenge was loaded from pre-generated JSON

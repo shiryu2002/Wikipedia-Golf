@@ -97,6 +97,12 @@ const isValidArticlePage = (page: any): boolean => {
     return false;
   }
 
+  // Check if the page title contains "削除依頼" (deletion request)
+  if (page.title.includes("削除依頼")) {
+    console.log(`記事ID ${page.pageid} (${page.title}) は削除依頼ページです。スキップします。`);
+    return false;
+  }
+
   return true;
 };
 
