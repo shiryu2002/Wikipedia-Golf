@@ -9,7 +9,7 @@ export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     // Handle browser back/forward button with confirmation
     router.beforePopState(() => {
-      const confirmed = window.confirm('前のページに戻りますか？')
+      const confirmed = window.confirm('タイトルに戻りますか？ゲームは中断されます。')
       if (!confirmed) {
         // Prevent navigation
         window.history.pushState(null, '', router.asPath)
