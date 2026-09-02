@@ -97,36 +97,37 @@ export const ShareModal = ({
       size="md"
       dismissible={false}
       showClose={false}
+      mobileFull
       footer={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <Button variant="ghost" size="sm" onClick={onViewArticle}>
             記事を見る
           </Button>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-row">
             <Button variant="secondary" leading={<HomeIcon size={16} />} onClick={onReturnToTitle}>
               タイトルへ
             </Button>
             <Button variant="primary" leading={<RefreshIcon size={16} />} onClick={onReplay}>
-              同じお題でもう一度
+              <span className="sm:hidden">もう一度</span>
+              <span className="hidden sm:inline">同じお題でもう一度</span>
             </Button>
           </div>
         </div>
       }
     >
       <div className="text-center">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">Hole out</p>
-        <h2 className="mt-2 font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">ゴール達成</h2>
+        <h2 className="font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">ゴール達成</h2>
         <p className="mt-2 text-sm text-ink-2">{strokeComment(stroke)}</p>
       </div>
 
       {/* Scorecard */}
-      <div className="mt-6 rounded-card border border-rule bg-paper p-5">
+      <div className="mt-4 rounded-card border border-rule bg-paper p-4 sm:mt-6 sm:p-5">
         <div className={`grid gap-4 ${isTimeAttackMode ? "grid-cols-2" : "grid-cols-1"}`}>
           <div className="text-center">
             <p className="text-xs font-medium text-ink-2">打数</p>
             <p className="mt-1 flex items-baseline justify-center gap-1.5">
               <span
-                className="tabular font-numeral text-6xl font-semibold leading-none tracking-tight text-ink"
+                className="tabular font-numeral text-5xl font-semibold leading-none tracking-tight text-ink sm:text-6xl"
                 style={{ fontVariationSettings: '"opsz" 144' }}
               >
                 {stroke}
@@ -150,7 +151,7 @@ export const ShareModal = ({
           )}
         </div>
 
-        <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 border-t border-rule pt-4 text-left">
+        <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-start gap-3 border-t border-rule pt-4 text-left sm:mt-5">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Start</p>
             <p className="mt-0.5 break-words font-display text-[15px] font-bold leading-snug">{startTitle || "-"}</p>
@@ -193,7 +194,7 @@ export const ShareModal = ({
       )}
 
       {/* Share actions */}
-      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+      <div className="mt-4 grid gap-2 sm:mt-5 sm:grid-cols-2">
         <TwitterShareButton
           url={shareUrl}
           title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！${timeText}`}

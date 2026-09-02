@@ -21,6 +21,8 @@ type DialogProps = {
   className?: string;
   /** Prevent the initial auto-focus (e.g. when there's an autoFocus input). */
   initialFocus?: boolean;
+  /** Sheet variant only: take the whole screen on phones instead of a bottom sheet. */
+  mobileFull?: boolean;
 };
 
 const sizeClasses = {
@@ -60,6 +62,7 @@ export const Dialog = ({
   showClose = true,
   className = "",
   initialFocus = true,
+  mobileFull = false,
 }: DialogProps) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
@@ -131,6 +134,13 @@ export const Dialog = ({
   if (!open) return null;
 
   const isSheet = variant === "sheet";
+  const isFull = isSheet && mobileFull;
+
+  const panelShape = isFull
+    ? "animate-fade-in h-[100dvh] max-h-[100dvh] rounded-none border-0 pt-[env(safe-area-inset-top,0px)] sm:h-auto sm:max-h-[min(92dvh,56rem)] sm:animate-scale-in sm:rounded-card sm:border sm:pt-0"
+    : isSheet
+      ? "max-h-[min(92dvh,56rem)] animate-sheet-up rounded-t-[1.5rem] border sm:animate-scale-in sm:rounded-card"
+      : "max-h-[min(92dvh,56rem)] animate-scale-in rounded-card border";
 
   return (
     <div
@@ -152,15 +162,13 @@ export const Dialog = ({
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={[
-          "relative flex max-h-[min(92dvh,56rem)] w-full flex-col overflow-hidden border border-rule bg-paper-2 text-ink shadow-paper-lg outline-none",
-          isSheet
-            ? "animate-sheet-up rounded-t-[1.5rem] sm:animate-scale-in sm:rounded-card"
-            : "animate-scale-in rounded-card",
+          "relative flex w-full flex-col overflow-hidden border-rule bg-paper-2 text-ink shadow-paper-lg outline-none",
+          panelShape,
           sizeClasses[size],
           className,
         ].join(" ")}
       >
-        {isSheet && (
+        {isSheet && !isFull && (
           <div className="flex justify-center pt-2.5 sm:hidden" aria-hidden>
             <span className="h-1 w-10 rounded-full bg-rule-2" />
           </div>
