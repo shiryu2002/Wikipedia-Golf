@@ -243,7 +243,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
 
   return (
     <div
-      className="fixed inset-0 z-[150] flex flex-col items-center justify-center overflow-hidden bg-ink/75 px-4 backdrop-blur-[3px]"
+      className="hi-backdrop fixed inset-0 z-[150] flex flex-col items-center justify-center overflow-hidden px-4 backdrop-blur-[3px]"
       aria-live="polite"
       onClick={() => skipRef.current?.()}
       role="presentation"
@@ -388,7 +388,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       </div>
 
       {/* the score stamp */}
-      <div className="mt-2 flex min-h-[9rem] flex-col items-center text-center text-paper-2">
+      <div className="mt-2 flex min-h-[9rem] flex-col items-center text-center text-[#F7F3EA]">
         {showNumeral ? (
           <>
             <p className="hi-stamp text-[11px] font-semibold uppercase tracking-[0.35em] text-[#E8C86A]">Hole out</p>
@@ -396,11 +396,11 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
               <span className="tabular font-numeral text-[5.5rem] font-semibold leading-none tracking-tight" style={{ fontVariationSettings: '"opsz" 144' }}>
                 {strokes}
               </span>
-              <span className="text-lg font-semibold text-paper-2/70">打</span>
-              {timeLabel ? <span className="ml-3 font-numeral text-3xl font-semibold text-paper-2/80">{timeLabel}</span> : null}
+              <span className="text-lg font-semibold text-[#F7F3EA]/70">打</span>
+              {timeLabel ? <span className="ml-3 font-numeral text-3xl font-semibold text-[#F7F3EA]/80">{timeLabel}</span> : null}
             </p>
             <p className="hi-stamp mt-1 font-display text-2xl font-bold [animation-delay:200ms]">{strokeWord(strokes)}</p>
-            <p className="mt-2 max-w-md truncate text-sm text-paper-2/60 animate-fade-in [animation-delay:400ms]">
+            <p className="mt-2 max-w-md truncate text-sm text-[#F7F3EA]/60 animate-fade-in [animation-delay:400ms]">
               {startTitle} → {goalTitle}
             </p>
           </>
@@ -408,7 +408,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       </div>
 
       {!showNumeral && phase !== "idle" && (
-        <p className="pointer-events-none absolute bottom-6 text-[11px] tracking-[0.25em] text-paper-2/45 animate-fade-in [animation-delay:800ms]">
+        <p className="pointer-events-none absolute bottom-6 text-[11px] tracking-[0.25em] text-[#F7F3EA]/45 animate-fade-in [animation-delay:800ms]">
           タップでスキップ
         </p>
       )}

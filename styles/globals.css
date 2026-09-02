@@ -705,6 +705,20 @@ button,
     opacity: 1;
   }
 }
+/* Theme-independent dim: the page behind may be paper or midnight, the
+   celebration always plays under the same charcoal, faded in gently. */
+@keyframes hi-backdrop {
+  from {
+    background-color: rgb(0 0 0 / 0);
+  }
+  to {
+    background-color: rgb(26 25 22 / 0.86);
+  }
+}
+.hi-backdrop {
+  background-color: rgb(26 25 22 / 0.86);
+  animation: hi-backdrop 500ms ease-out both;
+}
 .hi-ball-drop {
   animation: hi-ball-drop 420ms cubic-bezier(0.5, 0, 0.9, 0.4) forwards;
   transform-box: fill-box;
