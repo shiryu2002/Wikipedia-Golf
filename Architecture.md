@@ -79,12 +79,15 @@
 - `components/Share.tsx`: クリア時の結果ダイアログ。X 共有、共有テキスト・ルートのコピー、タイトルへ戻る、同じお題でもう一度。
 - `components/game/*`: ゲーム画面をデスクトップ（サイドバー）とモバイル（ボトムドック + シート）の両方で組み立てるための部品。同じコンポーネントを `frame="panel" | "bare"` で使い分ける。
 - `useCase/referer.ts`: Wikipedia API の backlinks エンドポイントを利用して、目標記事へのリンク元数とタイトル一覧を取得するドメインロジック。
-- `useCase/dailyChallenge.ts`: 日付から計算したページIDを用いて Wikipedia API からゴール／スタート記事を動的に解決するユーティリティ。
+- `useCase/dailyChallenge.ts`: 今日のお題の型・日付ヘルパー・`public/daily-challenge.json` から今日の分を取り出すローダー、記事本文の取得（`fetchArticle`: ID → タイトルの順に試す。リダイレクトは追従。「ID+1」のような別記事へのフォールバックはしない）。
+- `useCase/dailyChallengeGenerator.ts`: お題の選定ロジック本体（スクリプト専用、ブラウザには含まれない）。良質な記事・秀逸な記事のカテゴリを候補プールにし、日付ハッシュで決定的に選び、被リンク数・発リンク数・リダイレクト／曖昧さ回避／直接リンクを検査する。14 日分のローリングバッファを補充する。
+- `useCase/dailyChallengeCache.ts`: 今日のお題の localStorage ミラー（再訪時にスケルトンを出さないため）。
+- `scripts/generate-daily-challenge.ts`: 上記ジェネレーターを呼ぶ薄い CLI。GitHub Actions が毎日実行。
 - `styles/globals.css`: デザイントークン（CSS 変数）、ベーススタイル、`.article-content` 配下の Wikipedia HTML の整形。
 
 ## 状態管理とデータフロー
 
-1. ユーザーが「スタート」を押すと、デイリーモードでは `fetchDailyChallenge` で決定したページIDから開始／ゴール記事を読み込み、通常モードでは `getGoal` と `pickStart` がランダム記事を取得。
+1. ユーザーが「スタート」を押すと、デイリーモードでは `public/daily-challenge.json`（14 日分の先読み）から今日のエントリを取り出して開始／ゴール記事を読み込み、通常モードでは `getGoal` と `pickStart` がランダム記事を取得。
 2. 目標記事の被リンク情報を `countReferer` が取得し、ヒント (リンク元タイトル一覧) として `HintsPanel` に渡す。
 3. 記事本文は `dangerouslySetInnerHTML` で描画し、記事内リンクのクリックをカスタムハンドラでフックして内部遷移と打数更新を実現。
 4. ゴールタイトルと一致するとゲームオーバー状態に遷移し、`ShareModal` が結果共有ダイアログを表示。

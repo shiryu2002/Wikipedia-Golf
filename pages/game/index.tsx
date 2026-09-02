@@ -27,7 +27,7 @@ import {
   TrophyIcon,
 } from "@/components/ui/Icons";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { DailyChallenge, fetchPageParseWithFallback } from "@/useCase/dailyChallenge";
+import { type DailyChallenge, fetchArticle } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
   loadDailyChallengeWithCache,
@@ -58,6 +58,8 @@ export default function GamePage() {
   const router = useRouter();
   const autoStartRef = useRef(false);
   const [title, setTitle] = useState<string>("");
+  /** Canonical title of the loaded article (after redirects / normalisation). */
+  const [displayTitle, setDisplayTitle] = useState<string>("");
   const [articleId, setArticleId] = useState<number | undefined>(undefined);
   const [locale, setLocale] = useState<"en" | "ja">("ja");
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
@@ -84,7 +86,7 @@ export default function GamePage() {
   const [isResultDismissed, setIsResultDismissed] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
-  const articleCacheRef = useRef(new Map<string, string>());
+  const articleCacheRef = useRef(new Map<string, { title: string; html: string }>());
   const gameStateRef = useRef(gameState);
   const leavingRef = useRef(false);
   gameStateRef.current = gameState;
@@ -222,7 +224,7 @@ export default function GamePage() {
       return;
     }
     try {
-      const goalArticle = await fetchPageParseWithFallback(activeLocale, {
+      const goalArticle = await fetchArticle(activeLocale, {
         id: options.pageId,
         title: options.title,
       });
@@ -400,6 +402,7 @@ export default function GamePage() {
     requestUrl: string,
   ) => {
     setContent(html);
+    setDisplayTitle(articleTitle);
 
     if (!shouldSkipProgressUpdate && articleTitle !== "メインページ" && gameState === "playing") {
       setStroke((prevStroke) => {
@@ -420,47 +423,31 @@ export default function GamePage() {
     ignoreNextContentRef.current = false;
   };
 
-  const fetchTitle = async (title: string) => {
-    const encodedTitle = encodeURIComponent(title);
-    const requestUrl = `https://${locale}.wikipedia.org/w/api.php?action=parse&page=${encodedTitle}&format=json&origin=*`;
-    const cacheKey = `${locale}:${title}`;
+  const fetchTitle = async (requestedTitle: string) => {
+    const articleUrl = `https://${locale}.wikipedia.org/wiki/${encodeURIComponent(requestedTitle)}`;
+    const cacheKey = `${locale}:${requestedTitle}`;
     const shouldSkipProgressUpdate = ignoreNextContentRef.current;
 
-    const cachedHtml = articleCacheRef.current.get(cacheKey);
-    if (cachedHtml !== undefined) {
+    const cached = articleCacheRef.current.get(cacheKey);
+    if (cached !== undefined) {
       setIsLoading(false);
-      applyArticleContent(title, cachedHtml, shouldSkipProgressUpdate, requestUrl);
+      applyArticleContent(cached.title, cached.html, shouldSkipProgressUpdate, articleUrl);
       finalizeArticleLoad(shouldSkipProgressUpdate);
       return;
     }
 
     setIsLoading(true);
     try {
-      const result = await fetchPageParseWithFallback(locale, {
-        id: articleId,
-        title,
-      });
-      const html = result.html;
-
-      articleCacheRef.current.set(cacheKey, html);
-      applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
+      // Tries the page id first (daily start), then the title. Never "id + 1".
+      const result = await fetchArticle(locale, { id: articleId, title: requestedTitle });
+      const entry = { title: result.title || requestedTitle, html: result.html };
+      articleCacheRef.current.set(cacheKey, entry);
+      applyArticleContent(entry.title, entry.html, shouldSkipProgressUpdate, articleUrl);
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
+      setContent("");
+      setDisplayTitle(requestedTitle);
       setIsDailyStartup(false);
-
-      // If this is a daily challenge startup and the article failed to load, try to fetch by title only
-      if (isDailyStartup && articleId !== undefined) {
-        console.log("記事IDでの取得に失敗しました。タイトルで再試行します...");
-        try {
-          const result = await fetchPageParseWithFallback(locale, { title });
-          const html = result.html;
-
-          articleCacheRef.current.set(cacheKey, html);
-          applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
-        } catch (retryError) {
-          console.error("タイトルでの記事取得にも失敗しました", retryError);
-        }
-      }
     } finally {
       setIsLoading(false);
       finalizeArticleLoad(shouldSkipProgressUpdate);
@@ -500,6 +487,7 @@ export default function GamePage() {
     setHistory([]);
     setGoal("");
     setGoalArticle("");
+    setDisplayTitle("");
     setIsGoalDetailsView(false);
     setIsDailyStartup(isDailyGameMode(mode));
     setActiveMode(mode);
@@ -853,7 +841,7 @@ export default function GamePage() {
 
         <section className="min-w-0 flex-1">
           <ArticleView
-            title={title}
+            title={displayTitle || title}
             goal={goal}
             html={activeArticleHtml}
             isGoalDetailsView={isGoalDetailsView}

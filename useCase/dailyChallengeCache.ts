@@ -1,82 +1,56 @@
-import {
-  DailyChallenge,
-  fetchDailyChallenge,
-  fetchPageParseWithFallback,
-} from "./dailyChallenge";
+import { type DailyChallenge, type Locale, fetchDailyChallenge, getJstDateString } from "./dailyChallenge";
+
+/**
+ * A tiny localStorage cache so repeat visits render today's hole instantly
+ * instead of flashing a skeleton. The pre-generated file is the source of
+ * truth; this only mirrors today's entry.
+ */
 
 const STORAGE_PREFIX = "dailyChallenge";
 
-const buildStorageKey = (locale: "ja" | "en") => `${STORAGE_PREFIX}:${locale}`;
+const buildStorageKey = (locale: Locale) => `${STORAGE_PREFIX}:${locale}`;
 
 const canUseStorage = () => typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-
-/**
- * Get current date in YYYY-MM-DD format for JST timezone
- */
-const getJstDateString = (): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-  }).format(new Date());
-};
 
 type CachedDailyChallenge = {
   date: string;
   challenge: DailyChallenge;
 };
 
-const writeCachePayload = (locale: "ja" | "en", payload: CachedDailyChallenge) => {
-  if (!canUseStorage()) {
-    return;
-  }
+const isUsable = (cached: CachedDailyChallenge | null | undefined, today: string): cached is CachedDailyChallenge =>
+  Boolean(
+    cached &&
+      cached.date === today &&
+      cached.challenge &&
+      cached.challenge.date === today &&
+      cached.challenge.start?.title &&
+      cached.challenge.goal?.title,
+  );
+
+export const writeDailyChallengeCache = (locale: Locale, challenge: DailyChallenge) => {
+  if (!canUseStorage()) return;
   try {
+    const payload: CachedDailyChallenge = { date: challenge.date, challenge };
     window.localStorage.setItem(buildStorageKey(locale), JSON.stringify(payload));
   } catch (error) {
     console.warn("デイリーチャレンジのキャッシュ書き込みに失敗しました", error);
   }
 };
 
-export const writeDailyChallengeCache = (
-  locale: "ja" | "en",
-  challenge: DailyChallenge,
-) => {
-  const payload: CachedDailyChallenge = {
-    date: getJstDateString(),
-    challenge,
-  };
-  writeCachePayload(locale, payload);
-};
-
-export const readCachedDailyChallenge = (
-  locale: "ja" | "en",
-): DailyChallenge | null => {
-  if (!canUseStorage()) {
-    return null;
-  }
-
+export const readCachedDailyChallenge = (locale: Locale): DailyChallenge | null => {
+  if (!canUseStorage()) return null;
   const key = buildStorageKey(locale);
-  const today = getJstDateString();
-
   try {
-    const cachedRaw = window.localStorage.getItem(key);
-    if (!cachedRaw) {
-      return null;
-    }
-    const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
-    if (!cached?.challenge) {
-      console.warn("キャッシュデータが不正です。削除します。");
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const cached = JSON.parse(raw) as CachedDailyChallenge | null;
+    if (!isUsable(cached, getJstDateString())) {
       window.localStorage.removeItem(key);
       return null;
     }
-    if (cached.date !== today) {
-      console.log(`キャッシュが古いです (${cached.date} !== ${today})。削除します。`);
-      window.localStorage.removeItem(key);
-      return null;
-    }
-    console.log("キャッシュからデイリーチャレンジを読み込みました");
     return cached.challenge;
   } catch (error) {
     console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
-    // Clear corrupted cache
     try {
       window.localStorage.removeItem(key);
     } catch {}
@@ -84,174 +58,30 @@ export const readCachedDailyChallenge = (
   }
 };
 
-export const loadDailyChallengeWithCache = async (
-  locale: "ja" | "en",
-): Promise<DailyChallenge> => {
-  const key = buildStorageKey(locale);
-  const today = getJstDateString();
+export const loadDailyChallengeWithCache = async (locale: Locale): Promise<DailyChallenge> => {
+  const cached = readCachedDailyChallenge(locale);
+  if (cached) return cached;
 
-  if (!canUseStorage()) {
-    return fetchDailyChallenge(locale);
-  }
-
-  let challenge: DailyChallenge | null = null;
-
-  try {
-    const cachedRaw = window.localStorage.getItem(key);
-    if (cachedRaw) {
-      const cached: CachedDailyChallenge | null = JSON.parse(cachedRaw);
-      if (cached?.date === today && cached.challenge) {
-        console.log("ローカルストレージからデイリーチャレンジを復元しました");
-        challenge = cached.challenge;
-      } else {
-        window.localStorage.removeItem(key);
-      }
-    }
-  } catch (error) {
-    console.warn("キャッシュ済みデイリーチャレンジの読み込みに失敗しました", error);
-    // Clear corrupted cache
-    try {
-      window.localStorage.removeItem(key);
-    } catch {}
-  }
-
-  if (!challenge) {
-    try {
-      challenge = await fetchDailyChallenge(locale);
-      const payload: CachedDailyChallenge = { date: today, challenge };
-      writeCachePayload(locale, payload);
-    } catch (error) {
-      console.error("デイリーチャレンジの取得に失敗しました", error);
-      throw error;
-    }
-  }
-
-  if (!challenge) {
-    throw new Error("デイリーチャレンジを解決できませんでした");
-  }
-
-  // Check if goal or start titles are missing (incomplete data)
-  const missingGoalTitle = !challenge.goal.title?.trim();
-  const missingStartTitle = !challenge.start.title?.trim();
-
-  // If data is incomplete, fetch missing information
-  if (missingGoalTitle || missingStartTitle) {
-    console.log("チャレンジデータが不完全です。不足している情報を取得します...");
-    let updatedGoal = challenge.goal;
-    let updatedStart = challenge.start;
-
-    // Fetch goal title if missing
-    if (missingGoalTitle) {
-      try {
-        const goalParse = await fetchPageParseWithFallback(locale, {
-          id: challenge.goal.id,
-          title: challenge.goal.title ?? "",
-        });
-        updatedGoal = {
-          id: goalParse.id ?? challenge.goal.id,
-          title: goalParse.title,
-        };
-        console.log(`ゴールタイトルを取得: ${updatedGoal.title}`);
-      } catch (error) {
-        console.error("ゴールタイトルの取得に失敗しました", error);
-        // Keep the ID even if title fetch fails for potential retry
-      }
-    }
-
-    // Fetch start title if missing
-    if (missingStartTitle) {
-      try {
-        const startParse = await fetchPageParseWithFallback(locale, {
-          id: challenge.start.id,
-          title: challenge.start.title ?? "",
-        });
-        updatedStart = {
-          id: startParse.id ?? challenge.start.id,
-          title: startParse.title,
-        };
-        console.log(`スタートタイトルを取得: ${updatedStart.title}`);
-      } catch (error) {
-        console.error("スタートタイトルの取得に失敗しました", error);
-        // Keep the ID even if title fetch fails for potential retry
-      }
-    }
-
-    // Always update cache with whatever data we have
-    const updated: DailyChallenge = {
-      ...challenge,
-      goal: updatedGoal,
-      start: updatedStart,
-    };
-    const payload: CachedDailyChallenge = { date: today, challenge: updated };
-    writeCachePayload(locale, payload);
-
-    // If we still have missing data after fetch attempts, throw error
-    // Only throw if both attempts failed AND we don't have titles
-    if (!updatedGoal.title || !updatedStart.title) {
-      throw new Error("タイトル情報の取得に失敗しました。デイリーチャレンジを完全に読み込めません。");
-    }
-
-    return updated;
-  }
-
-  // Skip verification if the challenge was loaded from pre-generated JSON
-  // and data is complete to avoid unnecessary API calls
-  if (challenge.fromJson) {
-    return challenge;
-  }
-
-  // Verify goal article for API-generated challenges
-  try {
-    const goalParse = await fetchPageParseWithFallback(locale, {
-      id: challenge.goal.id,
-      title: challenge.goal.title,
-    });
-    const resolvedGoalId = goalParse.id ?? challenge.goal.id;
-    const resolvedGoalTitle = goalParse.title ?? challenge.goal.title;
-
-    if (
-      resolvedGoalId !== challenge.goal.id
-      || resolvedGoalTitle !== challenge.goal.title
-    ) {
-      console.log(`ゴール記事を更新: ${challenge.goal.title} → ${resolvedGoalTitle}`);
-      const updated: DailyChallenge = {
-        ...challenge,
-        goal: {
-          id: resolvedGoalId,
-          title: resolvedGoalTitle,
-        },
-        // Preserve fromJson flag if it exists
-        fromJson: challenge.fromJson,
-      };
-      const payload: CachedDailyChallenge = { date: today, challenge: updated };
-      writeCachePayload(locale, payload);
-      return updated;
-    }
-  } catch (error) {
-    console.warn("ゴール記事の検証に失敗しました", error);
-  }
-
+  const challenge = await fetchDailyChallenge(locale);
+  writeDailyChallengeCache(locale, challenge);
   return challenge;
 };
 
+/** Drop cache entries from previous days (any locale). */
 export const clearExpiredDailyChallengeCache = () => {
   if (!canUseStorage()) return;
-
   const today = getJstDateString();
   const prefix = `${STORAGE_PREFIX}:`;
-
   try {
     for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
       const key = window.localStorage.key(index);
-      if (!key || !key.startsWith(prefix)) {
-        continue;
-      }
-      const rawValue = window.localStorage.getItem(key);
-      if (!rawValue) {
-        continue;
-      }
-      const cached: CachedDailyChallenge | null = JSON.parse(rawValue);
-      if (!cached || cached.date !== today) {
+      if (!key || !key.startsWith(prefix)) continue;
+      const raw = window.localStorage.getItem(key);
+      let cached: CachedDailyChallenge | null = null;
+      try {
+        cached = raw ? (JSON.parse(raw) as CachedDailyChallenge) : null;
+      } catch {}
+      if (!isUsable(cached, today)) {
         window.localStorage.removeItem(key);
       }
     }

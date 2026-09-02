@@ -1,421 +1,204 @@
+/**
+ * Daily challenge — shared types, date helpers, the client-side loader for
+ * the pre-generated challenge file, and article fetching.
+ *
+ * The challenge file (public/daily-challenge.json) is a rolling buffer of
+ * days generated ahead of time by scripts/generate-daily-challenge.ts, so the
+ * client only ever looks up today's entry; it never has to compute anything.
+ */
+
+export type Locale = "ja" | "en";
+
 export type DailyChallengeEntry = {
   id: number;
   title: string;
 };
 
-export type DailyChallenge = {
-  locale: "ja" | "en";
-  date: string;
-  goal: DailyChallengeEntry;
+export type DailyChallengeStats = {
+  /** Articles (non-redirects) linking to the goal, capped at 500. */
+  goalBacklinks: number;
+  /** Article links leaving the start page, capped at 500. */
+  startOutlinks: number;
+};
+
+export type DailyChallengeDay = {
   start: DailyChallengeEntry;
-  /**
-   * Indicates if this challenge was loaded from pre-generated JSON file.
-   * 
-   * When true:
-   * - Set by `fetchDailyChallengeFromJson` when loading from `/daily-challenge.json`
-   * - Causes `loadDailyChallengeWithCache` to skip goal article verification via Wikipedia API
-   * - Improves loading speed by eliminating unnecessary API call (~1s saved)
-   * 
-   * When false/undefined:
-   * - Challenge was generated via API fallback
-   * - Goal article will be verified to ensure it's valid and parseable
-   */
-  fromJson?: boolean;
+  goal: DailyChallengeEntry;
+  stats?: DailyChallengeStats;
 };
 
-const DAILY_ID_MULTIPLIERS = {
-  year: 10,
-  month: 100,
-  day: 1000,
-} as const;
-
-const API_BASE = (locale: "ja" | "en") =>
-  `https://${locale}.wikipedia.org/w/api.php`;
-
-const MAX_SEARCH_OFFSET = 500;
-const PAGEID_CHUNK_SIZE = 50;
-const MAX_CONCURRENT_BATCHES = 5;
-const ARTICLE_FETCH_TIMEOUT_MS = 2000;
-const ARTICLE_FETCH_MAX_ATTEMPTS = 50;
-
-/**
- * Get current date in YYYY-MM-DD format for JST timezone
- */
-const getJstDateString = (): string => {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Tokyo",
-  }).format(new Date());
+/** The challenge for one date, as consumed by the UI. */
+export type DailyChallenge = DailyChallengeDay & {
+  locale: Locale;
+  date: string;
 };
 
-/**
- * Get the current date in JST timezone as a Date object.
- * This function properly handles timezone conversion by formatting the date
- * components individually in JST and constructing a new Date.
- */
-const getJstDate = (): Date => {
-  const now = new Date();
-  
-  // Get date components in JST timezone
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Tokyo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  
-  const parts = formatter.formatToParts(now);
-  const yearPart = parts.find(p => p.type === "year")?.value;
-  const monthPart = parts.find(p => p.type === "month")?.value;
-  const dayPart = parts.find(p => p.type === "day")?.value;
-  
-  if (!yearPart || !monthPart || !dayPart) {
-    throw new Error("日付コンポーネントの取得に失敗しました");
+/** Shape of public/daily-challenge.json. */
+export type DailyChallengeFile = {
+  version: 2;
+  locale: Locale;
+  generatedAt: string;
+  days: Record<string, DailyChallengeDay>;
+};
+
+export const DAILY_CHALLENGE_FILE_VERSION = 2 as const;
+export const DAILY_CHALLENGE_PATH = "/daily-challenge.json";
+
+/* ------------------------------------------------------------------ */
+/* Dates (the game day rolls over at midnight JST)                      */
+/* ------------------------------------------------------------------ */
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Today's date in JST as YYYY-MM-DD. */
+export const getJstDateString = (now: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(now);
+
+/** Add days to a YYYY-MM-DD string without touching time zones. */
+export const addDays = (isoDate: string, days: number): string => {
+  if (!ISO_DATE.test(isoDate)) {
+    throw new Error(`Invalid date: ${isoDate}`);
   }
-  
-  const year = parseInt(yearPart, 10);
-  const month = parseInt(monthPart, 10);
-  const day = parseInt(dayPart, 10);
-  
-  // Create a Date object representing midnight JST for the current day
-  return new Date(year, month - 1, day);
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`;
 };
 
-/**
- * Fetch daily challenge from the pre-generated JSON file
- */
-const fetchDailyChallengeFromJson = async (
-  locale: "ja" | "en",
-): Promise<DailyChallenge | null> => {
-  try {
-    const response = await fetch("/daily-challenge.json");
-    if (!response.ok) {
-      console.log("デイリーチャレンジJSONファイルが見つかりません。APIから生成します。");
-      return null;
-    }
+/* ------------------------------------------------------------------ */
+/* Challenge file                                                        */
+/* ------------------------------------------------------------------ */
 
-    const data: DailyChallenge = await response.json();
-    
-    // Validate the data structure
-    if (!data || !data.date || !data.locale || !data.goal || !data.start) {
-      console.error("JSONファイルの構造が不正です。APIから生成します。");
-      return null;
-    }
+const isEntry = (value: unknown): value is DailyChallengeEntry =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as DailyChallengeEntry).id === "number" &&
+  typeof (value as DailyChallengeEntry).title === "string" &&
+  (value as DailyChallengeEntry).title.trim().length > 0;
 
-    const today = getJstDateString();
-
-    // Check if the JSON file is for today and matches the requested locale
-    if (data.date === today && data.locale === locale) {
-      console.log(`JSONファイルから今日のデイリーチャレンジを取得しました: ${data.date}`);
-      // Mark as loaded from JSON to skip verification steps
-      return { ...data, fromJson: true };
-    }
-
-    console.log(
-      `JSONファイルの日付 (${data.date}) が今日 (${today}) と一致しないか、ロケールが異なります (要求: ${locale})。APIから生成します。`
-    );
-    return null;
-  } catch (error) {
-    console.error("デイリーチャレンジJSONの読み込みに失敗しました:", error);
-    return null;
-  }
+export const isDailyChallengeFile = (value: unknown): value is DailyChallengeFile => {
+  if (typeof value !== "object" || value === null) return false;
+  const file = value as Partial<DailyChallengeFile>;
+  return (
+    file.version === DAILY_CHALLENGE_FILE_VERSION &&
+    (file.locale === "ja" || file.locale === "en") &&
+    typeof file.days === "object" &&
+    file.days !== null
+  );
 };
 
-const chunkArray = <T,>(items: T[], size: number): T[][] => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
+/** Pick one date out of the file. Returns null when the date is missing. */
+export const pickDailyChallenge = (
+  file: unknown,
+  locale: Locale,
+  date: string,
+): DailyChallenge | null => {
+  if (!isDailyChallengeFile(file) || file.locale !== locale) return null;
+  const day = file.days[date];
+  if (!day || !isEntry(day.start) || !isEntry(day.goal)) return null;
+  return { locale, date, start: day.start, goal: day.goal, stats: day.stats };
 };
 
-const buildCandidateIds = (baseId: number): number[] => {
-  const ids: number[] = [];
-  for (let offset = 0; offset <= MAX_SEARCH_OFFSET; offset += 1) {
-    if (offset === 0) {
-      ids.push(baseId);
-      continue;
-    }
-
-    ids.push(baseId + offset);
-    if (baseId - offset > 0) {
-      ids.push(baseId - offset);
-    }
-  }
-  return ids;
-};
-
-type WikiPageMeta = {
-  pageid?: number;
-  ns?: number;
-  title: string;
-  missing?: string | boolean;
-  invalid?: string | boolean;
-};
-
-const fetchPageMetaBatch = async (
-  locale: "ja" | "en",
-  pageIds: number[],
-): Promise<Record<string, WikiPageMeta>> => {
-  const queryIds = pageIds.join("|");
-  const url = `${API_BASE(locale)}?action=query&format=json&pageids=${queryIds}&origin=*`;
-  const response = await fetch(url);
+/** Fetch the pre-generated file and return today's challenge. */
+export const fetchDailyChallenge = async (
+  locale: Locale = "ja",
+  date: string = getJstDateString(),
+): Promise<DailyChallenge> => {
+  const response = await fetch(DAILY_CHALLENGE_PATH, { cache: "no-store" });
   if (!response.ok) {
-    throw new Error(`Failed to fetch page metadata for ids: ${queryIds}`);
+    throw new Error(`デイリーチャレンジの読み込みに失敗しました (HTTP ${response.status})`);
   }
-  const json = await response.json();
-  if (json?.error) {
-    throw new Error(
-      `Wikipedia API error for ids ${queryIds}: ${json.error.code ?? "unknown"}`,
-    );
+  const file = await response.json();
+  const challenge = pickDailyChallenge(file, locale, date);
+  if (!challenge) {
+    throw new Error(`${date} のお題がまだ用意されていません`);
   }
-  return json?.query?.pages ?? {};
+  return challenge;
 };
 
-/**
- * Check if a page is a valid article page (not a category, user page, etc.)
- */
-const isValidArticlePage = (page: WikiPageMeta | undefined): page is WikiPageMeta => {
-  // Check if page exists
-  if (!page || page.missing || page.invalid) {
-    return false;
-  }
+/* ------------------------------------------------------------------ */
+/* Articles                                                              */
+/* ------------------------------------------------------------------ */
 
-  // Check if it's in the main article namespace (namespace 0)
-  // Namespace 0 = main articles
-  // Other namespaces: 1=Talk, 2=User, 3=User talk, 6=File, 10=Template, 14=Category, etc.
-  const ARTICLE_NAMESPACE = 0;
-  if (page.ns !== undefined && page.ns !== ARTICLE_NAMESPACE) {
-    console.log(`記事ID ${page.pageid} (${page.title}) は名前空間 ${page.ns} です。スキップします。`);
-    return false;
-  }
-
-  return true;
-};
-
-const findExistingPage = async (
-  locale: "ja" | "en",
-  baseId: number,
-): Promise<DailyChallengeEntry> => {
-  const candidates = buildCandidateIds(baseId);
-  const candidateChunks = chunkArray(candidates, PAGEID_CHUNK_SIZE);
-
-  for (let index = 0; index < candidateChunks.length; index += MAX_CONCURRENT_BATCHES) {
-    const chunkBatch = candidateChunks.slice(index, index + MAX_CONCURRENT_BATCHES);
-    const batchResults = await Promise.all(
-      chunkBatch.map(async (chunk) => {
-        try {
-          return await fetchPageMetaBatch(locale, chunk);
-        } catch (error) {
-          console.error("ページメタデータの取得に失敗しました", error);
-          return null;
-        }
-      }),
-    );
-
-    for (let batchIndex = 0; batchIndex < chunkBatch.length; batchIndex += 1) {
-      const chunk = chunkBatch[batchIndex];
-      const pages = batchResults[batchIndex];
-      if (!pages) {
-        continue;
-      }
-
-      for (const candidateId of chunk) {
-        const page = pages?.[String(candidateId)];
-        if (isValidArticlePage(page)) {
-          console.log(`✓ 有効な記事を発見: ID ${page.pageid} - ${page.title}`);
-          return {
-            id: page.pageid ?? candidateId,
-            title: page.title,
-          };
-        }
-      }
-    }
-  }
-
-  throw new Error(`Could not resolve a Wikipedia page near id ${baseId}`);
-};
-
-const findParseablePage = async (
-  locale: "ja" | "en",
-  baseId: number,
-): Promise<DailyChallengeEntry> => {
-  const candidates = buildCandidateIds(baseId);
-  
-  // Try each candidate ID to find one that can be parsed
-  for (const candidateId of candidates) {
-    try {
-      // First check if the page exists and is a valid article
-      const metaResult = await fetchPageMetaBatch(locale, [candidateId]);
-      const page = metaResult?.[String(candidateId)];
-      
-      if (isValidArticlePage(page)) {
-        const pageTitle = page.title;
-        const pageId = page.pageid ?? candidateId;
-        
-        // Now try to parse it to make sure it's actually parseable
-        try {
-          await fetchPageParseWithFallback(locale, { 
-            id: pageId,
-            title: pageTitle 
-          }, { maxAttempts: 1 });
-          
-          // If we got here, the page is parseable
-          console.log(`✓ パース可能な記事を発見: ID ${pageId} - ${pageTitle}`);
-          return {
-            id: pageId,
-            title: pageTitle,
-          };
-        } catch {
-          // This page exists but can't be parsed, try next candidate
-          console.log(`記事ID ${pageId} (${pageTitle}) は解析できません。次の候補を試します...`);
-          continue;
-        }
-      }
-    } catch {
-      // Failed to check this candidate, try next
-      continue;
-    }
-  }
-
-  throw new Error(`Could not resolve a parseable Wikipedia page near id ${baseId}`);
-};
-
-/**
- * Compute a base page ID from the given date.
- * The formula creates a pseudo-random but deterministic ID based on date components.
- * The final multiplication by day adds additional variation to spread IDs across the Wikipedia page ID space.
- */
-const computeDailyBaseId = (date: Date): number => {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const result = (year * DAILY_ID_MULTIPLIERS.year + month * DAILY_ID_MULTIPLIERS.month + day * DAILY_ID_MULTIPLIERS.day) * day;
-
-  return result;
-};
-
-type ArticleIdentifier = {
+export type ArticleIdentifier = {
   id?: number;
   title: string;
 };
 
-type ArticleParseResult = {
+export type ArticleParseResult = {
   id?: number;
+  /** Canonical title as returned by the API (after redirects). */
   title: string;
   html: string;
 };
 
-const buildParseUrl = (
-  locale: "ja" | "en",
-  identifier: ArticleIdentifier,
-): string => {
+const ARTICLE_FETCH_TIMEOUT_MS = 15000;
+
+const apiBase = (locale: Locale) => `https://${locale}.wikipedia.org/w/api.php`;
+
+const buildParseUrl = (locale: Locale, identifier: ArticleIdentifier): string => {
+  const params = new URLSearchParams({
+    action: "parse",
+    format: "json",
+    origin: "*",
+    // Follow redirects the way a click on Wikipedia would, instead of
+    // landing on a one-line "転送先" stub.
+    redirects: "1",
+    prop: "text|title|pageid",
+  });
   if (identifier.id !== undefined) {
-    return `${API_BASE(locale)}?action=parse&pageid=${identifier.id}&format=json&origin=*`;
+    params.set("pageid", String(identifier.id));
+  } else {
+    params.set("page", identifier.title);
   }
-  return `${API_BASE(locale)}?action=parse&page=${encodeURIComponent(identifier.title)}&format=json&origin=*`;
+  return `${apiBase(locale)}?${params.toString()}`;
 };
 
-const createAbortControllerWithTimeout = () => {
-  if (typeof AbortController === "undefined") {
-    return { controller: undefined, timeoutId: undefined } as const;
-  }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, ARTICLE_FETCH_TIMEOUT_MS);
-  return { controller, timeoutId } as const;
-};
-
-export const fetchPageParseWithFallback = async (
-  locale: "ja" | "en",
-  identifier: ArticleIdentifier,
-  options?: {
-    maxAttempts?: number;
-  },
-): Promise<ArticleParseResult> => {
-  const maxAttempts = identifier.id !== undefined
-    ? options?.maxAttempts ?? ARTICLE_FETCH_MAX_ATTEMPTS
-    : 1;
-
-  let candidateId = identifier.id;
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const currentIdentifier: ArticleIdentifier = {
-      id: candidateId,
-      title: identifier.title,
+const parseOnce = async (locale: Locale, identifier: ArticleIdentifier): Promise<ArticleParseResult> => {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : undefined;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), ARTICLE_FETCH_TIMEOUT_MS) : undefined;
+  try {
+    const response = await fetch(buildParseUrl(locale, identifier), controller ? { signal: controller.signal } : undefined);
+    if (!response.ok) {
+      throw new Error(`記事の取得に失敗しました (HTTP ${response.status})`);
+    }
+    const data = await response.json();
+    if (data?.error) {
+      throw new Error(data.error.info ?? "Wikipedia parse API error");
+    }
+    const html: string | undefined = data?.parse?.text?.["*"];
+    if (!html) {
+      throw new Error("記事の本文が空です");
+    }
+    return {
+      id: typeof data.parse?.pageid === "number" ? data.parse.pageid : identifier.id,
+      title: typeof data.parse?.title === "string" && data.parse.title ? data.parse.title : identifier.title,
+      html,
     };
-    const requestUrl = buildParseUrl(locale, currentIdentifier);
-    const { controller, timeoutId } = createAbortControllerWithTimeout();
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+};
 
+/**
+ * Fetch an article's rendered HTML. When a page id is given it is tried
+ * first; if that fails (stale id, deleted page) the title is tried once.
+ * There is deliberately no "try the next id" behaviour — that could load a
+ * different article than the one requested.
+ */
+export const fetchArticle = async (locale: Locale, identifier: ArticleIdentifier): Promise<ArticleParseResult> => {
+  const attempts: ArticleIdentifier[] =
+    identifier.id !== undefined && identifier.title
+      ? [identifier, { title: identifier.title }]
+      : [identifier];
+
+  let lastError: unknown = null;
+  for (const attempt of attempts) {
     try {
-      if (currentIdentifier.id !== undefined) {
-        console.log(`記事ID: ${currentIdentifier.id} を取得中...`);
-      } else {
-        console.log(`記事タイトル: ${currentIdentifier.title} を取得中...`);
-      }
-
-      const response = await fetch(requestUrl, controller ? { signal: controller.signal } : undefined);
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-      }
-      if (!response.ok) {
-        throw new Error(`Failed to parse article for ${currentIdentifier.id ?? currentIdentifier.title}`);
-      }
-      const data = await response.json();
-      if (data?.error) {
-        throw new Error(data.error.info ?? "Wikipedia parse API error");
-      }
-      if (!data?.parse?.text?.["*"]) {
-        throw new Error("Article content is empty");
-      }
-
-      return {
-        id: data.parse?.pageid ?? currentIdentifier.id,
-        title: data.parse?.title ?? identifier.title,
-        html: data.parse.text["*"],
-      };
+      return await parseOnce(locale, attempt);
     } catch (error) {
-      if (timeoutId !== undefined) {
-        clearTimeout(timeoutId);
-      }
       lastError = error;
-      if (candidateId === undefined || attempt === maxAttempts - 1) {
-        throw error;
-      }
-      candidateId = candidateId + 1;
     }
   }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Failed to resolve article parse");
-};
-
-export const fetchDailyChallenge = async (
-  locale: "ja" | "en" = "ja",
-): Promise<DailyChallenge> => {
-  // Try to fetch from pre-generated JSON file first
-  const jsonChallenge = await fetchDailyChallengeFromJson(locale);
-  if (jsonChallenge) {
-    return jsonChallenge;
-  }
-
-  // Fallback to API generation using JST date
-  console.log("APIからデイリーチャレンジを生成します...");
-  const today = getJstDate();
-  const isoDate = getJstDateString();
-  const baseId = computeDailyBaseId(today);
-
-  console.log(`日付: ${isoDate}, ベースID: ${baseId}`);
-
-  const goal = await findExistingPage(locale, baseId + 100);
-  const start = await findParseablePage(locale, goal.id + 1000);
-
-  return {
-    locale,
-    date: isoDate,
-    goal,
-    start,
-  };
+  throw lastError instanceof Error ? lastError : new Error("記事の取得に失敗しました");
 };
