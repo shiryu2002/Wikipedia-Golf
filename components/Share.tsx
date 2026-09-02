@@ -1,11 +1,20 @@
-import { useState } from "react";
-
-import Modal from "react-modal";
 import { TwitterShareButton, XIcon } from "react-share";
+
+import { Button } from "@/components/ui/Button";
+import { Dialog } from "@/components/ui/Dialog";
+import {
+  CheckIcon,
+  CopyIcon,
+  FlagIcon,
+  HomeIcon,
+  RefreshIcon,
+  RouteIcon,
+} from "@/components/ui/Icons";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { formatTime } from "@/utils/time";
 
 interface ShareModalProps {
-  gameState: "idle" | "playing" | "gameover";
+  open: boolean;
   stroke: number;
   history: { title: string; url: string; stroke: number }[];
   goal: string;
@@ -13,32 +22,23 @@ interface ShareModalProps {
   isTimeAttackMode: boolean;
   elapsedTime: number;
   locale: "en" | "ja";
+  onViewArticle: () => void;
+  onReturnToTitle: () => void;
+  onReplay: () => void;
 }
 
-Modal.setAppElement("#__next");
+const SITE_ORIGIN = "https://wikipedia-golf.vercel.app";
 
-// モーダルのスタイルを定義
-const customStyles = {
-  content: {
-    top: "50%",
-    left: "50%",
-    right: "auto",
-    bottom: "auto",
-    marginRight: "-50%",
-    transform: "translate(-50%, -50%)",
-    border: "none",
-    padding: "0",
-    background: "transparent",
-  },
-  overlay: {
-    backgroundColor: "rgba(2, 6, 23, 0.78)",
-    backdropFilter: "blur(6px)",
-    zIndex: 9999,
-  },
+const strokeComment = (stroke: number) => {
+  if (stroke <= 1) return "ホールインワン！";
+  if (stroke <= 3) return "見事なショートゲーム。";
+  if (stroke <= 6) return "堅実なプレーでした。";
+  if (stroke <= 10) return "寄り道も知識のうち。";
+  return "長い旅路、お疲れさまでした。";
 };
 
 export const ShareModal = ({
-  gameState,
+  open,
   stroke,
   history,
   goal,
@@ -46,194 +46,173 @@ export const ShareModal = ({
   isTimeAttackMode,
   elapsedTime,
   locale,
+  onViewArticle,
+  onReturnToTitle,
+  onReplay,
 }: ShareModalProps) => {
-  const [isCopied, setIsCopied] = useState(false);
-  const [isRouteCopied, setIsRouteCopied] = useState(false);
+  const { copied: isCopied, copy: copyText } = useCopyToClipboard();
+  const { copied: isRouteCopied, copy: copyRoute } = useCopyToClipboard();
 
   const startTitle = history.length > 0 ? history[0].title : "";
-  const siteOrigin = "https://wikipedia-golf.vercel.app";
-  const defaultShareUrl = `${siteOrigin}/`;
-  const challengeShareUrl = !isDailyMode && startTitle && goal
-    ? (() => {
-      const params = new URLSearchParams({
-        start: "custom",
-        startTitle,
-        goalTitle: goal,
-      });
-      if (locale) {
-        params.set("locale", locale);
-      }
-      return `${siteOrigin}/game?${params.toString()}`;
-    })()
-    : null;
+  const defaultShareUrl = `${SITE_ORIGIN}/`;
+  const challengeShareUrl =
+    !isDailyMode && startTitle && goal
+      ? (() => {
+          const params = new URLSearchParams({
+            start: "custom",
+            startTitle,
+            goalTitle: goal,
+          });
+          if (locale) {
+            params.set("locale", locale);
+          }
+          return `${SITE_ORIGIN}/game?${params.toString()}`;
+        })()
+      : null;
   const shareUrl = challengeShareUrl ?? defaultShareUrl;
-  const shareDateTag = `WikipediaGolf_${new Date()
-    .toISOString()
-    .slice(0, 10)
-    .replace(/-/g, "_")}`;
+  const shareDateTag = `WikipediaGolf_${new Date().toISOString().slice(0, 10).replace(/-/g, "_")}`;
   const formattedTime = formatTime(elapsedTime);
   const timeText = isTimeAttackMode ? ` タイム: ${formattedTime}秒` : "";
   const baseShareText = `Wikipedia Golfで「${startTitle}」から${stroke}打で「${goal}」に到達しました！${timeText}`;
-  const shareTagLine = isDailyMode
-    ? `#WikipediaGolf #${shareDateTag}`
-    : "#WikipediaGolf";
+  const shareTagLine = isDailyMode ? `#WikipediaGolf #${shareDateTag}` : "#WikipediaGolf";
   const shareText = `${baseShareText}\n${shareUrl}\n${shareTagLine}`;
-  const hashtags = isDailyMode
-    ? ["WikipediaGolf", shareDateTag]
-    : ["WikipediaGolf"];
+  const hashtags = isDailyMode ? ["WikipediaGolf", shareDateTag] : ["WikipediaGolf"];
 
-  const handleCopy = async () => {
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareText);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = shareText;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
-      setIsCopied(true);
-      window.setTimeout(() => setIsCopied(false), 2000);
-    } catch (error) {
-      console.error("共有テキストのコピーに失敗しました", error);
-    }
-  };
-
-  const handleCopyRoute = async () => {
-    try {
-      const routeText = history
-        .map((item, index) => {
-          if (index === 0) {
-            return `スタート: ${item.title}`;
-          }
-          return `${item.stroke}打目: ${item.title}`;
-        })
-        .join("\n");
-      const fullRouteText = `${routeText}\nゴール: ${goal}`;
-
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(fullRouteText);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = fullRouteText;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
-      }
-      setIsRouteCopied(true);
-      window.setTimeout(() => setIsRouteCopied(false), 2000);
-    } catch (error) {
-      console.error("ルートのコピーに失敗しました", error);
-    }
-  };
+  const routeText = `${history
+    .map((item, index) => (index === 0 ? `スタート: ${item.title}` : `${item.stroke}打目: ${item.title}`))
+    .join("\n")}\nゴール: ${goal}`;
 
   return (
-    <Modal
-      isOpen={gameState === "gameover"}
-      onRequestClose={() => {
-        if (window.confirm("タイトルに戻りますか？")) {
-          window.location.href = "/";
-        }
-      }}
-      style={customStyles}
+    <Dialog
+      open={open}
+      variant="sheet"
+      size="md"
+      dismissible={false}
+      showClose={false}
+      footer={
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <Button variant="ghost" size="sm" onClick={onViewArticle}>
+            記事を見る
+          </Button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button variant="secondary" leading={<HomeIcon size={16} />} onClick={onReturnToTitle}>
+              タイトルへ
+            </Button>
+            <Button variant="primary" leading={<RefreshIcon size={16} />} onClick={onReplay}>
+              同じお題でもう一度
+            </Button>
+          </div>
+        </div>
+      }
     >
-      <div className="w-[min(90vw,30rem)] rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 p-10 text-white shadow-[0_35px_80px_-20px_rgba(15,23,42,0.8)]">
-        <header className="flex items-center gap-4">
-          <div className="grid h-16 w-16 place-items-center rounded-2xl bg-blue-500/20 text-2xl font-semibold text-blue-200">
-            WG
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-blue-200/80">
-              Congratulations
-            </p>
-            <h2 className="mt-1 text-3xl font-semibold leading-tight">
-              ゴール達成！
-            </h2>
-          </div>
-        </header>
-        <p className="mt-6 text-sm leading-relaxed text-slate-300">
-          {startTitle ? `「${startTitle}」からスタートして「${goal}」に到達しました。` : `「${goal}」に到達しました。`}
-          あなたのプレイ結果をシェアして、友だちとスコアを競いましょう。
-        </p>
+      <div className="text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">Hole out</p>
+        <h2 className="mt-2 font-display text-3xl font-bold leading-tight tracking-tight sm:text-4xl">ゴール達成</h2>
+        <p className="mt-2 text-sm text-ink-2">{strokeComment(stroke)}</p>
+      </div>
 
-        <section className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-6">
-          <p className="text-md uppercase tracking-[0.35em] text-slate-300">
-            記録
-          </p>
-          <div className="mt-3 flex items-baseline gap-3">
-            <span className="text-5xl font-bold text-white">{stroke}</span>
-            <span className="text-md text-slate-300">打</span>
+      {/* Scorecard */}
+      <div className="mt-6 rounded-card border border-rule bg-paper p-5">
+        <div className={`grid gap-4 ${isTimeAttackMode ? "grid-cols-2" : "grid-cols-1"}`}>
+          <div className="text-center">
+            <p className="text-xs font-medium text-ink-2">打数</p>
+            <p className="mt-1 flex items-baseline justify-center gap-1.5">
+              <span
+                className="tabular font-numeral text-6xl font-semibold leading-none tracking-tight text-ink"
+                style={{ fontVariationSettings: '"opsz" 144' }}
+              >
+                {stroke}
+              </span>
+              <span className="text-sm font-semibold text-ink-3">打</span>
+            </p>
           </div>
           {isTimeAttackMode && (
-            <div className="mt-3 flex items-baseline gap-3">
-              <span className="text-3xl font-bold text-blue-200">{formattedTime}</span>
-              <span className="text-md text-slate-300">秒</span>
+            <div className="border-l border-rule text-center">
+              <p className="text-xs font-medium text-ink-2">タイム</p>
+              <p className="mt-1 flex items-baseline justify-center gap-1.5">
+                <span
+                  className="tabular font-numeral text-5xl font-semibold leading-none tracking-tight text-ink"
+                  style={{ fontVariationSettings: '"opsz" 120' }}
+                >
+                  {formattedTime}
+                </span>
+                <span className="text-sm font-semibold text-ink-3">秒</span>
+              </p>
             </div>
           )}
-          <dl className="mt-4 space-y-2 text-sm text-slate-200">
-            <div className="flex items-center justify-between">
-              <dt className="text-slate-400">スタート記事</dt>
-              <dd className="text-right text-white/90">
-                {startTitle || "-"}
-              </dd>
-            </div>
-            <div className="flex items-center justify-between">
-              <dt className="text-slate-400">ゴール記事</dt>
-              <dd className="text-right text-white/90">{goal || "-"}</dd>
-            </div>
-          </dl>
-        </section>
+        </div>
 
-        <section className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <TwitterShareButton
-            url={shareUrl}
-            title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！${timeText}`}
-            hashtags={hashtags}
-          >
-            <div className="group flex w-full items-center justify-center gap-3 rounded-full bg-blue-500/90 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto sm:self-start">
-              <XIcon size={28} round={true} />
-              <span className="tracking-wide">Xで結果をシェア</span>
-            </div>
-          </TwitterShareButton>
-
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:ml-auto sm:w-auto ${isCopied
-              ? "bg-emerald-500 text-white shadow-lg"
-              : "border border-white/20 bg-transparent text-white hover:bg-white/10"
-              }`}
-          >
-            {isCopied ? "コピーしました！" : "共有テキストをコピー"}
-          </button>
-        </section>
-
-        <section className="mt-4 flex justify-center">
-          <button
-            type="button"
-            onClick={handleCopyRoute}
-            className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:w-auto ${isRouteCopied
-              ? "bg-emerald-500 text-white shadow-lg"
-              : "border border-white/20 bg-transparent text-white hover:bg-white/10"
-              }`}
-          >
-            {isRouteCopied ? "コピーしました！" : "辿ったルートをコピー"}
-          </button>
-        </section>
-
-        <p className="mt-8 text-center text-xs text-slate-400">
-          タイトルに戻るには枠外をクリックしてください。
-        </p>
+        <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-start gap-3 border-t border-rule pt-4 text-left">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-3">Start</p>
+            <p className="mt-0.5 break-words font-display text-[15px] font-bold leading-snug">{startTitle || "-"}</p>
+          </div>
+          <svg width="24" height="10" viewBox="0 0 28 10" aria-hidden className="mt-4 text-rule-2">
+            <path d="M0 5h24M20 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+          <div className="min-w-0 text-right">
+            <p className="flex items-center justify-end gap-1 text-[11px] font-semibold uppercase tracking-wider text-gold">
+              <FlagIcon size={12} /> Goal
+            </p>
+            <p className="mt-0.5 break-words font-display text-[15px] font-bold leading-snug">{goal || "-"}</p>
+          </div>
+        </div>
       </div>
-    </Modal>
+
+      {/* Route */}
+      {history.length > 1 && (
+        <details className="group mt-4 rounded-xl border border-rule bg-paper-2">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2">
+              <RouteIcon size={16} className="text-ink-2" /> 辿ったルート
+            </span>
+            <span className="text-xs font-normal text-ink-3 group-open:hidden">表示</span>
+            <span className="hidden text-xs font-normal text-ink-3 group-open:inline">閉じる</span>
+          </summary>
+          <ol className="scroll-thin max-h-48 space-y-1.5 overflow-y-auto border-t border-rule px-4 py-3 text-sm">
+            {history.map((item, index) => (
+              <li key={`${item.title}-${index}`} className="flex gap-3">
+                <span className="tabular w-8 shrink-0 text-right text-xs font-semibold text-ink-3">
+                  {index === 0 ? "S" : item.stroke}
+                </span>
+                <span className={`min-w-0 break-words ${index === history.length - 1 ? "font-semibold text-ink" : "text-ink-2"}`}>
+                  {item.title}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
+
+      {/* Share actions */}
+      <div className="mt-5 grid gap-2 sm:grid-cols-2">
+        <TwitterShareButton
+          url={shareUrl}
+          title={`Wikipedia Golfで｢${startTitle}｣から${stroke}打で｢${goal}｣に到達しました！${timeText}`}
+          hashtags={hashtags}
+          className="!block sm:col-span-2"
+          resetButtonStyle={false}
+        >
+          <span className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink px-4 text-sm font-semibold text-paper-2 shadow-lift transition hover:bg-ink/90 active:translate-y-px">
+            <XIcon size={22} round bgStyle={{ fill: "transparent" }} iconFillColor="currentColor" />
+            Xでシェア
+          </span>
+        </TwitterShareButton>
+        <Button
+          variant={isCopied ? "accent" : "secondary"}
+          leading={isCopied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+          onClick={() => void copyText(shareText)}
+        >
+          {isCopied ? "コピーしました" : "テキストをコピー"}
+        </Button>
+        <Button
+          variant={isRouteCopied ? "accent" : "secondary"}
+          leading={isRouteCopied ? <CheckIcon size={16} /> : <RouteIcon size={16} />}
+          onClick={() => void copyRoute(routeText)}
+        >
+          {isRouteCopied ? "コピーしました" : "ルートをコピー"}
+        </Button>
+      </div>
+    </Dialog>
   );
 };

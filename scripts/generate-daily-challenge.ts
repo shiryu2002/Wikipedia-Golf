@@ -62,11 +62,19 @@ const buildCandidateIds = (baseId: number): number[] => {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+type WikiPageMeta = {
+  pageid?: number;
+  ns?: number;
+  title: string;
+  missing?: string | boolean;
+  invalid?: string | boolean;
+};
+
 const fetchPageMetaBatch = async (
   locale: "ja" | "en",
   pageIds: number[],
   retries = 3,
-): Promise<Record<string, any>> => {
+): Promise<Record<string, WikiPageMeta>> => {
   const queryIds = pageIds.join("|");
   const url = `${API_BASE(locale)}?action=query&format=json&pageids=${queryIds}&origin=*`;
   
@@ -107,7 +115,7 @@ const fetchPageMetaBatch = async (
   throw new Error(`Failed to fetch after ${retries} attempts`);
 };
 
-const isValidArticlePage = (page: any): boolean => {
+const isValidArticlePage = (page: WikiPageMeta | undefined): page is WikiPageMeta => {
   // Check if page exists
   if (!page || page.missing || page.invalid) {
     return false;

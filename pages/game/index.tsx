@@ -1,13 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import Head from "next/head";
 import { useRouter } from "next/router";
 
-import { HintsModal } from "@/components/Hints";
-import { ShareModal } from "@/components/Share";
-import { MobileHintsModal } from "@/components/mobile/MobileHintsModal";
-import { MobileHistoryModal } from "@/components/mobile/MobileHistoryModal";
 import { Confetti } from "@/components/Confetti";
-import Image from "next/image";
+import { ShareModal } from "@/components/Share";
+import { ArticleView } from "@/components/game/ArticleView";
+import { DailyCard } from "@/components/game/DailyCard";
+import { GoalCard } from "@/components/game/GoalCard";
+import { HintsPanel } from "@/components/game/HintsPanel";
+import { MobileDock, type DockSheet } from "@/components/game/MobileDock";
+import { RouteTimeline } from "@/components/game/RouteTimeline";
+import { Scorecard, type GameMode } from "@/components/game/Scorecard";
+import { TopBar } from "@/components/game/TopBar";
+import { Button } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { Dialog } from "@/components/ui/Dialog";
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  CheckIcon,
+  DiceIcon,
+  EyeIcon,
+  FlagIcon,
+  HomeIcon,
+  LinkIcon,
+  TrophyIcon,
+} from "@/components/ui/Icons";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { DailyChallenge, fetchPageParseWithFallback } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
@@ -16,8 +35,6 @@ import {
   writeDailyChallengeCache,
 } from "@/useCase/dailyChallengeCache";
 import countReferer from "@/useCase/referer";
-import CircularProgress from "@mui/material/CircularProgress";
-import { formatTime } from "@/utils/time";
 
 const isDailyGameMode = (mode: string): boolean => {
   return mode === "daily" || mode === "daily-ta";
@@ -45,17 +62,13 @@ export default function GamePage() {
   const [locale, setLocale] = useState<"en" | "ja">("ja");
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [content, setContent] = useState("");
-  const [history, setHistory] = useState<
-    { title: string; url: string; stroke: number }[]
-  >([]);
+  const [history, setHistory] = useState<{ title: string; url: string; stroke: number }[]>([]);
   const [stroke, setStroke] = useState<number>(-1);
   const [goal, setGoal] = useState<string>("");
   const [goalArticle, setGoalArticle] = useState("");
   const [isGoalDetailsView, setIsGoalDetailsView] = useState(false);
   const [isGoalLoading, setIsGoalLoading] = useState(false);
-  const [gameState, setGameState] = useState<"idle" | "playing" | "gameover">(
-    "idle"
-  );
+  const [gameState, setGameState] = useState<"idle" | "playing" | "gameover">("idle");
   const [isLoading, setIsLoading] = useState(false);
   const [numOfReferer, setNumOfReferer] = useState<number>(0);
   const [hints, setHints] = useState<string[]>([]);
@@ -65,88 +78,115 @@ export default function GamePage() {
   const [startTime, setStartTime] = useState<number | null>(null);
   const [elapsedTime, setElapsedTime] = useState<number>(0);
   const [isDailyStartup, setIsDailyStartup] = useState(false);
-  const [isHistoryModalOpen, setHistoryModalOpen] = useState(false);
-  const [isUrlCopied, setIsUrlCopied] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isHintEnabled, setIsHintEnabled] = useState(false);
+  const [activeMode, setActiveMode] = useState<StartMode | null>(null);
+  const [activeSheet, setActiveSheet] = useState<DockSheet | null>(null);
+  const [isResultDismissed, setIsResultDismissed] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
   const articleCacheRef = useRef(new Map<string, string>());
+  const gameStateRef = useRef(gameState);
+  const leavingRef = useRef(false);
+  gameStateRef.current = gameState;
 
+  const { confirm, confirmDialog } = useConfirm();
+  const { copied: isUrlCopied, copy: copyUrl } = useCopyToClipboard();
 
-  const handleReturnToTitle = useCallback(() => {
+  // Guard the browser back button while a run is in progress.
+  useEffect(() => {
+    router.beforePopState(() => {
+      if (leavingRef.current || gameStateRef.current !== "playing") {
+        return true;
+      }
+      window.history.pushState(null, "", router.asPath);
+      void confirm({
+        title: "タイトルに戻りますか？",
+        description: "進行中のゲームは中断され、記録は保存されません。",
+        confirmLabel: "タイトルに戻る",
+        cancelLabel: "続ける",
+        tone: "danger",
+      }).then((confirmed) => {
+        if (confirmed) {
+          leavingRef.current = true;
+          void router.push("/");
+        }
+      });
+      return false;
+    });
+
+    return () => {
+      router.beforePopState(() => true);
+    };
+  }, [router, confirm]);
+
+  const handleReturnToTitle = useCallback(async () => {
     if (typeof window === "undefined") {
       return;
     }
-    const confirmed = window.confirm("タイトル画面に戻りますか？");
-    if (confirmed) {
-      void router.push("/");
+    if (gameStateRef.current === "playing") {
+      const confirmed = await confirm({
+        title: "タイトル画面に戻りますか？",
+        description: "進行中のゲームは中断されます。",
+        confirmLabel: "タイトルに戻る",
+        cancelLabel: "続ける",
+        tone: "danger",
+      });
+      if (!confirmed) return;
     }
-  }, [router]);
+    leavingRef.current = true;
+    void router.push("/");
+  }, [router, confirm]);
 
   const handleCopyCustomUrl = useCallback(async () => {
     if (!goal || isDailyMode) return;
-    
+
     const startTitle = history.length > 0 ? history[0]?.title : title;
     if (!startTitle) return;
 
-    try {
-      const siteOrigin = typeof window !== "undefined" ? window.location.origin : "https://wikipedia-golf.vercel.app";
-      const params = new URLSearchParams({
-        start: "custom",
-        startTitle,
-        goalTitle: goal,
-      });
-      if (locale) {
-        params.set("locale", locale);
+    const siteOrigin =
+      typeof window !== "undefined" ? window.location.origin : "https://wikipedia-golf.vercel.app";
+    const params = new URLSearchParams({
+      start: "custom",
+      startTitle,
+      goalTitle: goal,
+    });
+    if (locale) {
+      params.set("locale", locale);
+    }
+    if (isHintEnabled) {
+      params.set("hint", "1");
+    }
+    await copyUrl(`${siteOrigin}/game?${params.toString()}`);
+  }, [goal, history, isDailyMode, locale, title, isHintEnabled, copyUrl]);
+
+  const handleLinkClick = useCallback(
+    (event: MouseEvent) => {
+      const anchor = event.currentTarget as HTMLAnchorElement | null;
+      const href = anchor?.getAttribute("href");
+
+      // Allow anchor links (TOC navigation) to work normally without counting as a move
+      if (href && href.startsWith("#")) {
+        return;
       }
-      const customUrl = `${siteOrigin}/game?${params.toString()}`;
 
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(customUrl);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = customUrl;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        document.execCommand("copy");
-        document.body.removeChild(textarea);
+      event.preventDefault();
+      if (isGoalDetailsView) {
+        return;
       }
-      setIsUrlCopied(true);
-      window.setTimeout(() => setIsUrlCopied(false), 2000);
-    } catch (error) {
-      console.error("URLのコピーに失敗しました", error);
-    }
-  }, [goal, history, isDailyMode, locale, title]);
 
-  const handleLinkClick = useCallback((event: MouseEvent) => {
-    const anchor = event.currentTarget as HTMLAnchorElement | null;
-    const href = anchor?.getAttribute("href");
-    
-    // Allow anchor links (TOC navigation) to work normally without counting as a move
-    if (href && href.startsWith("#")) {
-      return;
-    }
-
-    event.preventDefault();
-    if (isGoalDetailsView) {
-      return;
-    }
-
-    const title = anchor?.getAttribute("title");
-    if (title) {
-      setArticleId(undefined);
-      setTitle(title);
-    }
-  }, [isGoalDetailsView]);
+      const title = anchor?.getAttribute("title");
+      if (title) {
+        setArticleId(undefined);
+        setTitle(title);
+      }
+    },
+    [isGoalDetailsView],
+  );
 
   const pickStart = async (): Promise<string | null> => {
     try {
       const response = await fetch(
-        `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`
+        `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`,
       );
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
@@ -167,11 +207,12 @@ export default function GamePage() {
   }) => {
     const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
-    
+
     // Use a single canonical cache key based on pageId if available, otherwise title
-    const canonicalCacheKey = options.pageId !== undefined
-      ? `${activeLocale}:goal:id:${options.pageId}`
-      : `${activeLocale}:goal:title:${options.title}`;
+    const canonicalCacheKey =
+      options.pageId !== undefined
+        ? `${activeLocale}:goal:id:${options.pageId}`
+        : `${activeLocale}:goal:title:${options.title}`;
 
     const cached = goalDetailsCacheRef.current.get(canonicalCacheKey);
     if (cached) {
@@ -190,7 +231,7 @@ export default function GamePage() {
 
       const refResult = await countReferer(goalArticle.title, activeLocale);
       const normalizedHints: string[] = Array.isArray(refResult.hints)
-        ? refResult.hints.map((hint: any) => String(hint))
+        ? refResult.hints.map((hint) => String(hint))
         : [];
 
       const entry: GoalDetailsCacheEntry = {
@@ -201,15 +242,12 @@ export default function GamePage() {
 
       // Store with canonical key only to avoid cache inconsistency
       goalDetailsCacheRef.current.set(canonicalCacheKey, entry);
-      // Also add an alias for the resolved ID if we have one and it's useful
       if (resolvedGoalId !== undefined && options.pageId === undefined) {
         // When called with title only, also cache by resolved ID
-        const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
-        goalDetailsCacheRef.current.set(resolvedKey, entry);
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
       } else if (resolvedGoalId !== undefined && resolvedGoalId !== options.pageId) {
         // When resolved ID differs from input ID, cache both
-        const resolvedKey = `${activeLocale}:goal:id:${resolvedGoalId}`;
-        goalDetailsCacheRef.current.set(resolvedKey, entry);
+        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
       }
 
       setGoal(goalArticle.title);
@@ -247,7 +285,7 @@ export default function GamePage() {
     setIsGoalLoading(true);
     try {
       const response = await fetch(
-        `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`
+        `https://${locale}.wikipedia.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=1&format=json&origin=*`,
       );
       const data = await response.json();
       const randomTitle = data.query.random[0].title;
@@ -264,11 +302,7 @@ export default function GamePage() {
   const resolveDailyChallenge = async (): Promise<DailyChallenge | null> => {
     try {
       const todayIso = new Date().toISOString().slice(0, 10);
-      if (
-        dailyChallenge &&
-        dailyChallenge.locale === locale &&
-        dailyChallenge.date === todayIso
-      ) {
+      if (dailyChallenge && dailyChallenge.locale === locale && dailyChallenge.date === todayIso) {
         return dailyChallenge;
       }
 
@@ -284,6 +318,8 @@ export default function GamePage() {
   const checkIfGameOver = (title: string) => {
     if (title === goal) {
       setGameState("gameover");
+      setIsResultDismissed(false);
+      setActiveSheet(null);
       // Stop timer when goal is reached
       if (isTimeAttackMode && startTime !== null) {
         setElapsedTime(performance.now() - startTime);
@@ -305,7 +341,7 @@ export default function GamePage() {
 
     const intervalId = setInterval(() => {
       setElapsedTime(performance.now() - startTime);
-    }, 1000); // Update every 1 second
+    }, 100);
 
     return () => clearInterval(intervalId);
   }, [isTimeAttackMode, gameState, startTime]);
@@ -355,7 +391,7 @@ export default function GamePage() {
         }
       });
     };
-  }, [content, goalArticle, handleLinkClick, isGoalDetailsView]);
+  }, [content, goalArticle, title, handleLinkClick, isGoalDetailsView]);
 
   const applyArticleContent = (
     articleTitle: string,
@@ -365,17 +401,10 @@ export default function GamePage() {
   ) => {
     setContent(html);
 
-    if (
-      !shouldSkipProgressUpdate &&
-      articleTitle !== "メインページ" &&
-      gameState === "playing"
-    ) {
+    if (!shouldSkipProgressUpdate && articleTitle !== "メインページ" && gameState === "playing") {
       setStroke((prevStroke) => {
         const nextStroke = prevStroke + 1;
-        setHistory((prev) => [
-          ...prev,
-          { title: articleTitle, url: requestUrl, stroke: nextStroke },
-        ]);
+        setHistory((prev) => [...prev, { title: articleTitle, url: requestUrl, stroke: nextStroke }]);
         return nextStroke;
       });
     }
@@ -407,9 +436,9 @@ export default function GamePage() {
 
     setIsLoading(true);
     try {
-      const result = await fetchPageParseWithFallback(locale, { 
+      const result = await fetchPageParseWithFallback(locale, {
         id: articleId,
-        title 
+        title,
       });
       const html = result.html;
 
@@ -418,16 +447,14 @@ export default function GamePage() {
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
       setIsDailyStartup(false);
-      
+
       // If this is a daily challenge startup and the article failed to load, try to fetch by title only
       if (isDailyStartup && articleId !== undefined) {
         console.log("記事IDでの取得に失敗しました。タイトルで再試行します...");
         try {
-          const result = await fetchPageParseWithFallback(locale, { 
-            title 
-          });
+          const result = await fetchPageParseWithFallback(locale, { title });
           const html = result.html;
-          
+
           articleCacheRef.current.set(cacheKey, html);
           applyArticleContent(title, html, shouldSkipProgressUpdate, requestUrl);
         } catch (retryError) {
@@ -439,7 +466,6 @@ export default function GamePage() {
       finalizeArticleLoad(shouldSkipProgressUpdate);
     }
   };
-
 
   const handleBackClick = () => {
     if (history.length <= 1) return;
@@ -458,10 +484,16 @@ export default function GamePage() {
 
   const start = async (mode: StartMode = "random", options?: StartOptions) => {
     if (stroke > 0) {
-      const shouldRestart = window.confirm("別のお題でやり直しますか？");
+      const shouldRestart = await confirm({
+        title: "別のお題でやり直しますか？",
+        description: "現在の進行状況は失われます。",
+        confirmLabel: "やり直す",
+        cancelLabel: "続ける",
+      });
       if (!shouldRestart) return;
     }
-    setHistoryModalOpen(false);
+    setActiveSheet(null);
+    setIsResultDismissed(false);
     setGameState("idle");
     setHintModal(false);
     setStroke(-1);
@@ -470,7 +502,8 @@ export default function GamePage() {
     setGoalArticle("");
     setIsGoalDetailsView(false);
     setIsDailyStartup(isDailyGameMode(mode));
-    
+    setActiveMode(mode);
+
     // Reset timer state
     setIsTimeAttackMode(mode === "daily-ta");
     setStartTime(null);
@@ -488,7 +521,7 @@ export default function GamePage() {
         setGameState("playing");
         setArticleId(challenge.start.id);
         setTitle(challenge.start.title);
-        
+
         // Start timer for time attack mode
         if (mode === "daily-ta") {
           setStartTime(performance.now());
@@ -513,9 +546,7 @@ export default function GamePage() {
 
       setIsDailyMode(false);
       setIsDailyStartup(false);
-      console.warn(
-        "Daily challenge start article could not be resolved. Falling back to random start."
-      );
+      console.warn("Daily challenge start article could not be resolved. Falling back to random start.");
     }
 
     const hasExplicitArticles = Boolean(options?.startTitle && options?.goalTitle);
@@ -548,15 +579,20 @@ export default function GamePage() {
 
         if (mode === "random") {
           autoStartRef.current = true;
-          void router.replace({
-            pathname: router.pathname,
-            query: {
-              start: "random",
-              startTitle: options.startTitle,
-              goalTitle: options.goalTitle,
-              locale: targetLocale,
+          void router.replace(
+            {
+              pathname: router.pathname,
+              query: {
+                start: "random",
+                startTitle: options.startTitle,
+                goalTitle: options.goalTitle,
+                locale: targetLocale,
+                ...(isHintEnabled ? { hint: "1" } : {}),
+              },
             },
-          }, undefined, { shallow: true });
+            undefined,
+            { shallow: true },
+          );
         }
         return;
       }
@@ -564,22 +600,24 @@ export default function GamePage() {
 
     setIsDailyMode(false);
     setIsDailyStartup(false);
-    const [randomStartTitle, randomGoalTitle] = await Promise.all([
-      pickStart(),
-      getGoal(),
-    ]);
+    const [randomStartTitle, randomGoalTitle] = await Promise.all([pickStart(), getGoal()]);
 
     if (randomStartTitle && randomGoalTitle) {
       autoStartRef.current = true;
-      void router.replace({
-        pathname: router.pathname,
-        query: {
-          start: "random",
-          startTitle: randomStartTitle,
-          goalTitle: randomGoalTitle,
-          locale,
+      void router.replace(
+        {
+          pathname: router.pathname,
+          query: {
+            start: "random",
+            startTitle: randomStartTitle,
+            goalTitle: randomGoalTitle,
+            locale,
+            ...(isHintEnabled ? { hint: "1" } : {}),
+          },
         },
-      }, undefined, { shallow: true });
+        undefined,
+        { shallow: true },
+      );
     }
   };
 
@@ -596,10 +634,10 @@ export default function GamePage() {
 
   useEffect(() => {
     let isCancelled = false;
-    
+
     // Clear expired cache first
     clearExpiredDailyChallengeCache();
-    
+
     // Try to load from cache immediately for faster initial display
     const cached = readCachedDailyChallenge(locale);
     if (cached && !isCancelled) {
@@ -675,396 +713,326 @@ export default function GamePage() {
       void start(resolvedMode, startOptions);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, router.query.start, router.query.startTitle, router.query.goalTitle, router.query.locale, router.query.hint]);
+  }, [
+    router.isReady,
+    router.query.start,
+    router.query.startTitle,
+    router.query.goalTitle,
+    router.query.locale,
+    router.query.hint,
+  ]);
+
+  const handleReplay = useCallback(() => {
+    const params = new URLSearchParams();
+    if (isDailyMode) {
+      params.set("start", isTimeAttackMode ? "daily-ta" : "daily");
+    } else {
+      const startTitle = history.length > 0 ? history[0].title : title;
+      params.set("start", "custom");
+      params.set("startTitle", startTitle);
+      params.set("goalTitle", goal);
+      params.set("locale", locale);
+    }
+    if (isHintEnabled) {
+      params.set("hint", "1");
+    }
+    leavingRef.current = true;
+    window.location.href = `/game?${params.toString()}`;
+  }, [isDailyMode, isTimeAttackMode, history, title, goal, locale, isHintEnabled]);
 
   const activeArticleHtml = isGoalDetailsView ? goalArticle : content;
   const isPrimaryArticleLoading = isGoalDetailsView ? isGoalLoading : isLoading;
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const dailyGoalTitle = dailyChallenge?.goal.title ?? "読み込み中";
-  const dailyGoalDate = dailyChallenge?.date ?? todayIso;
   const isDailyRunActive = isDailyMode && gameState === "playing";
   const shouldShowDailyStartup = isDailyStartup && !isGoalDetailsView;
-  const startArticleTitle = history.length > 0
-    ? history[0].title
-    : title || (isDailyMode ? dailyChallenge?.start.title : null) || "未設定";
+  const startArticleTitle =
+    history.length > 0 ? history[0].title : title || (isDailyMode ? dailyChallenge?.start.title : null) || "未設定";
   const headerGoalTitle = goal || (isDailyMode ? dailyChallenge?.goal.title : null) || "未設定";
   const canToggleGoal = Boolean(goal);
-  const isCustomMode = !isDailyMode && gameState === "playing" && goal && title;
+  const isCustomMode = Boolean(!isDailyMode && gameState === "playing" && goal && title);
+  const canUndo = history.length > 1 && !isTimeAttackMode;
+  const undoDisabledReason = isTimeAttackMode ? "タイムアタック中は戻せません" : undefined;
+  const reached = gameState === "gameover";
+  const mode: GameMode =
+    !activeMode && gameState === "idle"
+      ? "idle"
+      : isDailyMode || activeMode === "daily" || activeMode === "daily-ta"
+        ? isTimeAttackMode || activeMode === "daily-ta"
+          ? "daily-ta"
+          : "daily"
+        : activeMode === "custom"
+          ? "custom"
+          : "random";
+
+  const toggleGoalView = () => {
+    if (!canToggleGoal) return;
+    setIsGoalDetailsView((prev) => !prev);
+    setActiveSheet(null);
+  };
+
+  const pageTitle = goal ? `${headerGoalTitle} へ — Wikipedia Golf` : "プレイ — Wikipedia Golf";
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6 sm:px-6">
-          <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={handleReturnToTitle}
-              className="hidden items-center gap-4 rounded-2xl bg-transparent p-0 text-left text-white transition hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:flex sm:gap-5"
-            >
-              <Image
-                src="/w2.png"
-                alt="Wikipedia Golf アイコン"
-                width={64}
-                height={64}
-                className="h-14 w-14 rounded-2xl object-cover sm:h-16 sm:w-16"
-                priority
-              />
-              <h1 className="text-2xl font-semibold text-white sm:text-3xl md:text-4xl">
-                Wikipedia Golf
-              </h1>
-            </button>
-            <div className="flex w-full flex-col gap-3 sm:flex-1">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-start sm:gap-4">
-                <div className="flex w-full max-w-full gap-4 pr-4 sm:hidden">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">
-                      スタート
-                    </p>
-                    <p className="truncate text-sm font-semibold text-white">
-                      {startArticleTitle}
-                    </p>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[0.65rem] uppercase tracking-[0.3em] text-slate-400">
-                      ゴール
-                    </p>
-                    <p className="truncate text-sm font-semibold text-white">
-                      {headerGoalTitle}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex w-full justify-end gap-4 sm:w-auto sm:justify-start sm:ml-auto">
-                  <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
-                    打数:
-                    <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
-                      {stroke === -1 ? "0" : stroke}
-                    </span>
-                  </p>
-                  {isTimeAttackMode && (
-                    <p className="text-lg tracking-[0.25em] text-slate-300 sm:text-xl md:text-2xl">
-                      タイム:
-                      <span className="ml-2 text-3xl font-semibold text-white sm:text-4xl">
-                        {formatTime(elapsedTime)}s
-                      </span>
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:gap-3 sm:justify-end">
-                {/* Desktop buttons - always visible */}
-                <button
-                  className="hidden sm:flex sm:flex-none sm:w-auto rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400"
-                  onClick={() => start("random")}
-                >
-                  ランダムでスタート
-                </button>
-                {!isDailyRunActive && (
-                  <button
-                    className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white md:hidden"
-                    onClick={() => start("daily")}
-                  >
-                    今日のお題に挑戦
-                  </button>
-                )}
-                {gameState === "playing" && (
-                  <>
-                    {isHintEnabled && (
-                      <button
-                        className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                        onClick={() => setHintModal(!isHintModalOpen)}
-                      >
-                        ヒントを見る
-                      </button>
-                    )}
-                    {isCustomMode && (
-                      <button
-                        className="hidden sm:flex sm:flex-none sm:w-auto rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                        onClick={handleCopyCustomUrl}
-                      >
-                        {isUrlCopied ? "✓ コピーしました！" : "URLを共有"}
-                      </button>
-                    )}
-                  </>
-                )}
+    <div className="min-h-screen bg-paper text-ink">
+      <Head>
+        <title>{pageTitle}</title>
+      </Head>
 
-                {/* Mobile menu toggle button */}
-                <button
-                  className="sm:hidden flex-1 min-w-[140px] rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  type="button"
-                >
-                  {isMobileMenuOpen ? "メニューを閉じる" : "メニュー"}
-                </button>
+      <TopBar
+        startTitle={startArticleTitle}
+        goalTitle={headerGoalTitle}
+        stroke={stroke}
+        elapsedTime={elapsedTime}
+        isTimeAttackMode={isTimeAttackMode}
+        mode={mode}
+        isHintEnabled={isHintEnabled}
+        isHintOpen={isHintModalOpen}
+        onToggleHints={() => setHintModal((prev) => !prev)}
+        showShareUrl={isCustomMode}
+        isUrlCopied={isUrlCopied}
+        onCopyUrl={() => void handleCopyCustomUrl()}
+        canToggleGoal={canToggleGoal}
+        isGoalDetailsView={isGoalDetailsView}
+        onToggleGoal={toggleGoalView}
+        onReturnToTitle={() => void handleReturnToTitle()}
+      />
 
-                {/* Mobile collapsible menu */}
-                {isMobileMenuOpen && (
-                  <div className="sm:hidden w-full flex flex-col gap-2">
-                    <button
-                      className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400"
-                      onClick={() => {
-                        start("random");
-                        setIsMobileMenuOpen(false);
-                      }}
-                    >
-                      ランダムでスタート
-                    </button>
-                    {!isDailyRunActive && (
-                      <button
-                        className="w-full rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white"
-                        onClick={() => {
-                          start("daily");
-                          setIsMobileMenuOpen(false);
-                        }}
-                      >
-                        今日のお題に挑戦
-                      </button>
-                    )}
-                    {gameState === "playing" && (
-                      <>
-                        {isHintEnabled && (
-                          <button
-                            className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                            onClick={() => {
-                              setHintModal(!isHintModalOpen);
-                              setIsMobileMenuOpen(false);
-                            }}
-                          >
-                            ヒントを見る
-                          </button>
-                        )}
-                        {isCustomMode && (
-                          <button
-                            className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                            onClick={() => {
-                              handleCopyCustomUrl();
-                              setIsMobileMenuOpen(false);
-                            }}
-                          >
-                            {isUrlCopied ? "✓ コピーしました！" : "URLを共有"}
-                          </button>
-                        )}
-                      </>
-                    )}
-                    <button
-                      className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                      onClick={() => {
-                        setHistoryModalOpen(true);
-                        setIsMobileMenuOpen(false);
-                      }}
-                      type="button"
-                    >
-                      ルート
-                    </button>
-                    <button
-                      className={`w-full rounded-full px-5 py-3 text-sm font-semibold transition ${canToggleGoal
-                        ? "border border-white/20 text-white hover:bg-white/10"
-                        : "cursor-not-allowed border border-white/10 text-slate-500"}`}
-                      onClick={() => {
-                        if (!canToggleGoal) return;
-                        setIsGoalDetailsView((prev) => !prev);
-                        setIsMobileMenuOpen(false);
-                      }}
-                      disabled={!canToggleGoal}
-                      type="button"
-                    >
-                      {canToggleGoal
-                        ? isGoalDetailsView
-                          ? "現在の記事に戻る"
-                          : "ゴール記事を表示"
-                        : "ゴールは未設定"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          <ShareModal
-            gameState={gameState}
-            stroke={stroke}
+      {/* Mobile: start → goal strip */}
+      <div className="border-b border-rule bg-paper-2/60 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setActiveSheet("goal")}
+          className="mx-auto flex w-full max-w-shell items-center gap-2 px-4 py-2 text-left text-[13px] sm:px-6"
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-hidden />
+          <span className="min-w-0 flex-1 truncate font-medium text-ink">{startArticleTitle}</span>
+          <svg width="20" height="10" viewBox="0 0 28 10" aria-hidden className="shrink-0 text-rule-2">
+            <path d="M0 5h24M20 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+          <FlagIcon size={13} className="shrink-0 text-gold" />
+          <span className="min-w-0 flex-1 truncate font-medium text-ink">{headerGoalTitle}</span>
+        </button>
+      </div>
+
+      <main className="mx-auto flex w-full max-w-shell flex-col gap-6 px-4 pb-28 pt-4 sm:px-6 sm:pt-6 lg:flex-row lg:items-start lg:gap-8 lg:pb-12">
+        {/* Desktop sidebar */}
+        <aside className="scroll-thin hidden w-[21rem] shrink-0 flex-col gap-4 lg:sticky lg:top-20 lg:flex lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1">
+          <Scorecard stroke={stroke} isTimeAttackMode={isTimeAttackMode} elapsedTime={elapsedTime} mode={mode} />
+          <GoalCard
+            goal={goal}
+            numOfReferer={numOfReferer}
+            isLoading={isGoalLoading || shouldShowDailyStartup}
+            isGoalDetailsView={isGoalDetailsView}
+            onToggleView={toggleGoalView}
+          />
+          <RouteTimeline
             history={history}
             goal={goal}
-            isDailyMode={isDailyMode}
-            isTimeAttackMode={isTimeAttackMode}
-            elapsedTime={elapsedTime}
-            locale={locale}
+            reached={reached}
+            canUndo={canUndo}
+            undoDisabledReason={undoDisabledReason}
+            onUndo={handleBackClick}
           />
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:gap-8 sm:px-6 sm:py-8 lg:flex-row">
-        <aside className="hidden md:flex w-full flex-col gap-6 lg:w-80 lg:sticky lg:top-32 lg:self-start lg:max-h-[calc(100vh-8rem)] lg:overflow-y-auto">
-          <section className="hidden rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-6 text-white shadow-2xl sm:block">
-            <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-              今日のお題
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold leading-tight">
-              {dailyGoalTitle}
-            </h2>
-            <p className="mt-1 text-sm text-white/80">日付: {dailyGoalDate}</p>
-            <div className="mt-4 flex flex-col gap-3">
-              {!isDailyRunActive && (
-                <button
-                  className="w-full rounded-full bg-white py-3 text-center font-semibold text-slate-900 shadow transition hover:bg-slate-100"
-                  onClick={() => start("daily")}
-                >
-                  このお題でスタート
-                </button>
-              )}
-              <button
-                className={`w-full rounded-full border border-white/40 py-3 text-center text-white transition ${goal ? "hover:bg-white/10" : "cursor-not-allowed opacity-40"
-                  }`}
-                onClick={() => {
-                  if (!goal) return;
-                  setIsGoalDetailsView((prev) => !prev);
-                }}
-                disabled={!goal}
-              >
-                {goal
-                  ? isGoalDetailsView
-                    ? "現在の記事に戻る"
-                    : "ゴール記事を表示"
-                  : "ゴールは未設定"}
-              </button>
-            </div>
-          </section>
-
-          {goal && (
-            <section className="hidden rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur sm:block">
-              <button
-                className="flex w-full items-center justify-between text-left"
-                onClick={() => {
-                  if (!goal) return;
-                  setIsGoalDetailsView((prev) => !prev);
-                }}
-              >
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-300">
-                    ゴール記事
-                  </p>
-                  <p className="mt-1 text-xl font-semibold">{goal}</p>
-                </div>
-                <span className="text-sm text-blue-200">{numOfReferer} リンク</span>
-              </button>
-            </section>
+          {isHintEnabled && isHintModalOpen && gameState !== "idle" && (
+            <HintsPanel hints={hints} isLoading={isGoalLoading && hints.length === 0} />
           )}
-
-          <section className="hidden rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-xl backdrop-blur sm:block">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">辿ったルート</h2>
-              <button
-                className={`text-xs transition ${history.length <= 1 || isTimeAttackMode
-                  ? "cursor-not-allowed text-slate-500"
-                  : "text-blue-200 hover:text-blue-100"
-                  }`}
-                onClick={handleBackClick}
-                disabled={history.length <= 1 || isTimeAttackMode}
-              >
-                1手戻す
-              </button>
-            </div>
-            <div className="mt-4 space-y-3 pr-2 lg:max-h-[50vh] lg:overflow-y-auto">
-              {history.length === 0 ? (
-                <p className="text-sm text-slate-300">
-                  まだ遷移履歴がありません。
-                </p>
-              ) : (
-                history.map((item, index) => (
-                  <div
-                    key={`${item.title}-${index}`}
-                    className="rounded-2xl bg-white/10 px-4 py-3 text-sm text-slate-100 shadow-sm"
-                  >
-                    <p className="text-xs uppercase tracking-wider text-blue-200">
-                      {item.stroke === 0 ? "スタート" : `${item.stroke} 打目`}
-                    </p>
-                    <p className="mt-1 text-base font-semibold">{item.title}</p>
-                  </div>
-                ))
-              )}
-            </div>
+          <DailyCard challenge={dailyChallenge} isActive={isDailyRunActive} onStart={() => void start("daily")} />
+          <section className="rounded-card border border-dashed border-rule-2 p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-ink-3">New hole</p>
+            <Button
+              className="mt-3"
+              full
+              size="sm"
+              variant="secondary"
+              leading={<DiceIcon size={15} />}
+              onClick={() => void start("random")}
+            >
+              ランダムなお題でスタート
+            </Button>
           </section>
-
-          <div className="hidden sm:block">
-            <HintsModal hints={hints} isOpen={isHintModalOpen} />
-          </div>
         </aside>
 
-        <section className="flex-1 min-w-0">
-          <div className="min-w-0 rounded-3xl border border-white/10 bg-white p-4 shadow-2xl sm:p-6">
-            <div className="mb-6 flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-4">
-              <div className="max-w-2xl">
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">
-                  {isGoalDetailsView ? "ゴール記事" : "現在の記事"}
-                </p>
-                <h1 className="mt-2 text-2xl font-semibold text-slate-900">
-                  {isGoalDetailsView ? goal || "ゴール未設定" : title || "読み込み中･･･"}
-                </h1>
-                {isGoalDetailsView && isDailyMode && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    今日のお題モードで選定されたゴールです。
-                  </p>
-                )}
-              </div>
-              {isGoalDetailsView ? (
-                <button
-                  className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                  onClick={() => setIsGoalDetailsView(false)}
+        <section className="min-w-0 flex-1">
+          <ArticleView
+            title={title}
+            goal={goal}
+            html={activeArticleHtml}
+            isGoalDetailsView={isGoalDetailsView}
+            isLoading={isPrimaryArticleLoading}
+            isDailyStartup={shouldShowDailyStartup}
+            isDailyMode={isDailyMode}
+            gameState={gameState}
+            canToggleGoal={canToggleGoal}
+            onToggleGoal={toggleGoalView}
+            locale={locale}
+            idleActions={
+              <>
+                <Button
+                  variant="accent"
+                  size="sm"
+                  leading={<CalendarIcon size={15} />}
+                  disabled={!dailyChallenge}
+                  onClick={() => void start("daily")}
                 >
-                  現在の記事に戻る
-                </button>
-              ) : (
-                canToggleGoal && (
-                  <button
-                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
-                    onClick={() => setIsGoalDetailsView(true)}
-                  >
-                    ゴール記事を表示
-                  </button>
-                )
-              )}
-            </div>
-            {shouldShowDailyStartup ? (
-              <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-slate-600 sm:min-h-[70vh]">
-                <CircularProgress />
-                <p className="text-sm font-medium tracking-wide">
-                  今日のお題を取得中…
-                </p>
-              </div>
-            ) : isPrimaryArticleLoading ? (
-              <div className="flex min-h-[60vh] items-center justify-center sm:min-h-[70vh]">
-                <CircularProgress />
-              </div>
-            ) : activeArticleHtml ? (
-              <div
-                id="articleContent"
-                className="article-content max-w-full text-slate-900"
-                dangerouslySetInnerHTML={{ __html: activeArticleHtml }}
-              />
-            ) : gameState === "idle" ? (
-              <div className="flex min-h-[60vh] flex-col items-center justify-center text-sm text-slate-500 sm:min-h-[70vh]">
-                <p>ゲームを開始すると、記事がここに表示されます。</p>
-                <p className="mt-1">お題を選んでプレイを始めてください。</p>
-              </div>
-            ) : (
-              <div className="flex min-h-[60vh] flex-col items-center justify-center text-sm text-slate-500 sm:min-h-[70vh]">
-                <p>記事を読み込めませんでした。</p>
-                <p className="mt-1">別のリンクを開くか、再度お試しください。</p>
-              </div>
-            )}
-          </div>
+                  今日のお題でスタート
+                </Button>
+                <Button variant="secondary" size="sm" leading={<DiceIcon size={15} />} onClick={() => void start("random")}>
+                  ランダムでスタート
+                </Button>
+              </>
+            }
+          />
         </section>
       </main>
-      <MobileHistoryModal
-        isOpen={isHistoryModalOpen}
-        onClose={() => setHistoryModalOpen(false)}
-        onBack={handleBackClick}
+
+      {/* Reopen result after "記事を見る" */}
+      {gameState === "gameover" && isResultDismissed && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-40 flex justify-center px-4 lg:bottom-6">
+          <button
+            type="button"
+            onClick={() => setIsResultDismissed(false)}
+            className="pointer-events-auto flex animate-fade-up items-center gap-3 rounded-full border border-green/40 bg-paper-2 py-2 pl-3 pr-4 text-sm font-semibold text-ink shadow-paper-lg transition hover:border-green"
+          >
+            <span className="grid h-8 w-8 place-items-center rounded-full bg-green text-white">
+              <TrophyIcon size={16} />
+            </span>
+            ゴール達成 · {stroke}打
+            <span className="text-green">結果を見る</span>
+          </button>
+        </div>
+      )}
+
+      <MobileDock
+        active={activeSheet}
+        onOpen={(sheet) => setActiveSheet((prev) => (prev === sheet ? null : sheet))}
+        routeCount={history.length}
+        isHintEnabled={isHintEnabled}
+        isGoalDetailsView={isGoalDetailsView}
+      />
+
+      {/* Mobile sheets */}
+      <Dialog
+        open={activeSheet === "route"}
+        onClose={() => setActiveSheet(null)}
+        eyebrow="Route"
+        title={history.length > 1 ? `辿ったルート · ${history.length - 1} 打` : "辿ったルート"}
+        initialFocus={false}
+      >
+        <RouteTimeline
+          history={history}
+          goal={goal}
+          reached={reached}
+          canUndo={canUndo}
+          undoDisabledReason={undoDisabledReason}
+          onUndo={() => {
+            handleBackClick();
+            setActiveSheet(null);
+          }}
+          frame="bare"
+          maxHeightClass="max-h-[50vh]"
+        />
+      </Dialog>
+
+      <Dialog
+        open={activeSheet === "goal"}
+        onClose={() => setActiveSheet(null)}
+        eyebrow="Goal"
+        title="ゴールとお題"
+        initialFocus={false}
+      >
+        <GoalCard
+          goal={goal}
+          numOfReferer={numOfReferer}
+          isLoading={isGoalLoading || shouldShowDailyStartup}
+          isGoalDetailsView={isGoalDetailsView}
+          onToggleView={toggleGoalView}
+          frame="bare"
+        />
+        <div className="my-5 h-px bg-rule" />
+        <DailyCard
+          challenge={dailyChallenge}
+          isActive={isDailyRunActive}
+          onStart={() => void start("daily")}
+          frame="bare"
+        />
+      </Dialog>
+
+      <Dialog
+        open={activeSheet === "hints"}
+        onClose={() => setActiveSheet(null)}
+        eyebrow="Hints"
+        title="ゴールのリンク元"
+        initialFocus={false}
+      >
+        <HintsPanel hints={hints} isLoading={isGoalLoading && hints.length === 0} frame="bare" maxHeightClass="max-h-[45vh]" />
+      </Dialog>
+
+      <Dialog
+        open={activeSheet === "menu"}
+        onClose={() => setActiveSheet(null)}
+        eyebrow="Menu"
+        title="メニュー"
+        size="sm"
+        initialFocus={false}
+      >
+        <div className="flex flex-col gap-2">
+          <Button full variant="accent" leading={<DiceIcon size={16} />} onClick={() => void start("random")}>
+            ランダムなお題でスタート
+          </Button>
+          {!isDailyRunActive && (
+            <Button
+              full
+              variant="secondary"
+              leading={<CalendarIcon size={16} />}
+              disabled={!dailyChallenge}
+              onClick={() => void start("daily")}
+            >
+              今日のお題に挑戦
+            </Button>
+          )}
+          {canToggleGoal && (
+            <Button
+              full
+              variant="secondary"
+              leading={isGoalDetailsView ? <ArrowLeftIcon size={16} /> : <EyeIcon size={16} />}
+              onClick={toggleGoalView}
+            >
+              {isGoalDetailsView ? "現在の記事に戻る" : "ゴール記事を見る"}
+            </Button>
+          )}
+          {isCustomMode && (
+            <Button
+              full
+              variant="secondary"
+              leading={isUrlCopied ? <CheckIcon size={16} className="text-green" /> : <LinkIcon size={16} />}
+              onClick={() => void handleCopyCustomUrl()}
+            >
+              {isUrlCopied ? "URLをコピーしました" : "このお題のURLを共有"}
+            </Button>
+          )}
+          <div className="my-1 h-px bg-rule" />
+          <Button full variant="ghost" leading={<HomeIcon size={16} />} onClick={() => void handleReturnToTitle()}>
+            タイトルに戻る
+          </Button>
+        </div>
+      </Dialog>
+
+      <ShareModal
+        open={gameState === "gameover" && !isResultDismissed}
+        stroke={stroke}
         history={history}
+        goal={goal}
+        isDailyMode={isDailyMode}
         isTimeAttackMode={isTimeAttackMode}
+        elapsedTime={elapsedTime}
+        locale={locale}
+        onViewArticle={() => setIsResultDismissed(true)}
+        onReturnToTitle={() => {
+          leavingRef.current = true;
+          void router.push("/");
+        }}
+        onReplay={handleReplay}
       />
-      <MobileHintsModal
-        isOpen={isHintModalOpen}
-        onClose={() => setHintModal(false)}
-        hints={hints}
-      />
+      {confirmDialog}
       <Confetti active={gameState === "gameover"} />
     </div>
   );

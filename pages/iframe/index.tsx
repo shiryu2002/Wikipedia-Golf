@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 
 export default function Home() {
-  const [baseURL, setBaseURL] = useState("https://ja.wikipedia.org/wiki/");
+  const baseURL = "https://ja.wikipedia.org/wiki/";
   const [article, setArticle] = useState("メインページ");
   const [stroke, setStroke] = useState(0);
   const [history, setHistory] = useState<{ url: string; stroke: number }[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const iframe = document.querySelector("iframe");
@@ -21,7 +20,6 @@ export default function Home() {
           console.error("URLの取得に失敗しました。", e);
           return;
         }
-        const newHistoryItem = { url: currentUrl, stroke: stroke + 1 };
         setHistory([...history, { url: currentUrl || "", stroke: stroke + 1 }]);
       };
       iframe.addEventListener("load", handleLoad);

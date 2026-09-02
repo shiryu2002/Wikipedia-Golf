@@ -144,10 +144,18 @@ const buildCandidateIds = (baseId: number): number[] => {
   return ids;
 };
 
+type WikiPageMeta = {
+  pageid?: number;
+  ns?: number;
+  title: string;
+  missing?: string | boolean;
+  invalid?: string | boolean;
+};
+
 const fetchPageMetaBatch = async (
   locale: "ja" | "en",
   pageIds: number[],
-): Promise<Record<string, any>> => {
+): Promise<Record<string, WikiPageMeta>> => {
   const queryIds = pageIds.join("|");
   const url = `${API_BASE(locale)}?action=query&format=json&pageids=${queryIds}&origin=*`;
   const response = await fetch(url);
@@ -166,7 +174,7 @@ const fetchPageMetaBatch = async (
 /**
  * Check if a page is a valid article page (not a category, user page, etc.)
  */
-const isValidArticlePage = (page: any): boolean => {
+const isValidArticlePage = (page: WikiPageMeta | undefined): page is WikiPageMeta => {
   // Check if page exists
   if (!page || page.missing || page.invalid) {
     return false;
@@ -257,13 +265,13 @@ const findParseablePage = async (
             id: pageId,
             title: pageTitle,
           };
-        } catch (parseError) {
+        } catch {
           // This page exists but can't be parsed, try next candidate
           console.log(`記事ID ${pageId} (${pageTitle}) は解析できません。次の候補を試します...`);
           continue;
         }
       }
-    } catch (error) {
+    } catch {
       // Failed to check this candidate, try next
       continue;
     }

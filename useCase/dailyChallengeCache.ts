@@ -139,7 +139,6 @@ export const loadDailyChallengeWithCache = async (
     console.log("チャレンジデータが不完全です。不足している情報を取得します...");
     let updatedGoal = challenge.goal;
     let updatedStart = challenge.start;
-    let hasMissingData = false;
 
     // Fetch goal title if missing
     if (missingGoalTitle) {
@@ -156,7 +155,6 @@ export const loadDailyChallengeWithCache = async (
       } catch (error) {
         console.error("ゴールタイトルの取得に失敗しました", error);
         // Keep the ID even if title fetch fails for potential retry
-        hasMissingData = true;
       }
     }
 
@@ -175,7 +173,6 @@ export const loadDailyChallengeWithCache = async (
       } catch (error) {
         console.error("スタートタイトルの取得に失敗しました", error);
         // Keep the ID even if title fetch fails for potential retry
-        hasMissingData = true;
       }
     }
 

@@ -1,9 +1,25 @@
-import Image from "next/image";
+import { useCallback, useEffect, useState } from "react";
+import Head from "next/head";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import CircularProgress from "@mui/material/CircularProgress";
 
+import { BrandMark, Wordmark } from "@/components/Brand";
+import { formatJaDate } from "@/components/game/DailyCard";
+import { CustomChallengeDialog } from "@/components/home/CustomChallengeDialog";
+import { Button, ButtonLink } from "@/components/ui/Button";
+import {
+  ArrowRightIcon,
+  BulbIcon,
+  CalendarIcon,
+  ClockIcon,
+  DiceIcon,
+  FlagIcon,
+  GitHubIcon,
+  LinkIcon,
+  PenIcon,
+  RouteIcon,
+  ShareIcon,
+} from "@/components/ui/Icons";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { DailyChallenge } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
@@ -11,185 +27,49 @@ import {
   readCachedDailyChallenge,
 } from "@/useCase/dailyChallengeCache";
 
-const useArticleSuggestions = (
-  query: string,
-  locale: "en" | "ja",
-  isActive: boolean,
-) => {
-  const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  useEffect(() => {
-    if (!isActive) {
-      setSuggestions([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setSuggestions([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const debounceId = window.setTimeout(async () => {
-      setIsLoading(true);
-      try {
-        const params = new URLSearchParams({
-          action: "query",
-          list: "prefixsearch",
-          pssearch: trimmed,
-          pslimit: "6",
-          format: "json",
-          origin: "*",
-        });
-        const endpoint = `https://${locale}.wikipedia.org/w/api.php?${params.toString()}`;
-        const response = await fetch(endpoint, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(`Failed to fetch prefix search for ${trimmed}`);
-        }
-        const data = await response.json();
-        const resultItems: string[] = Array.isArray(data?.query?.prefixsearch)
-          ? data.query.prefixsearch
-            .map((item: { title?: string }) => item?.title)
-            .filter((title: string | undefined): title is string => Boolean(title))
-          : [];
-        setSuggestions(resultItems);
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          console.error("記事サジェストの取得に失敗しました", error);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }, 250);
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(debounceId);
-      setIsLoading(false);
-    };
-  }, [query, locale, isActive]);
-
-  return { suggestions, isLoading };
+type ToggleProps = {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+  hint: string;
+  icon: React.ReactNode;
 };
 
+const ModeToggle = ({ checked, onChange, label, hint, icon }: ToggleProps) => (
+  <label className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-rule bg-paper-2 px-3.5 py-3 transition hover:border-rule-2">
+    <span
+      className={`grid h-9 w-9 shrink-0 place-items-center rounded-full transition ${
+        checked ? "bg-green-soft text-green" : "bg-paper-3 text-ink-3"
+      }`}
+    >
+      {icon}
+    </span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-semibold text-ink">{label}</span>
+      <span className="block text-xs text-ink-2">{hint}</span>
+    </span>
+    <span className="relative inline-flex h-6 w-11 shrink-0 items-center">
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="absolute inset-0 rounded-full bg-rule-2 transition peer-checked:bg-green peer-focus-visible:ring-2 peer-focus-visible:ring-green/40" />
+      <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition peer-checked:translate-x-5" />
+    </span>
+  </label>
+);
+
 export default function Home() {
-  const router = useRouter();
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [isDailyChallengeLoading, setIsDailyChallengeLoading] = useState(false);
   const [isCustomModalOpen, setCustomModalOpen] = useState(false);
-  const [customStartTitle, setCustomStartTitle] = useState("");
-  const [customGoalTitle, setCustomGoalTitle] = useState("");
-  const [customLocale, setCustomLocale] = useState<"ja" | "en">("ja");
-  const [customError, setCustomError] = useState<string | null>(null);
-  const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
-  const [showStartSuggestions, setShowStartSuggestions] = useState(false);
-  const [showGoalSuggestions, setShowGoalSuggestions] = useState(false);
   const [isTimeAttackMode, setIsTimeAttackMode] = useState(false);
   const [isHintMode, setIsHintMode] = useState(true);
 
-  const {
-    suggestions: startSuggestions,
-    isLoading: isStartSuggestionsLoading,
-  } = useArticleSuggestions(
-    customStartTitle,
-    customLocale,
-    isCustomModalOpen && showStartSuggestions,
-  );
-  const {
-    suggestions: goalSuggestions,
-    isLoading: isGoalSuggestionsLoading,
-  } = useArticleSuggestions(
-    customGoalTitle,
-    customLocale,
-    isCustomModalOpen && showGoalSuggestions,
-  );
-
-  const handleOpenCustomModal = useCallback(() => {
-    setCustomError(null);
-    setCustomModalOpen(true);
-  }, []);
-
-  const handleCloseCustomModal = useCallback(() => {
-    setCustomError(null);
-    setShowStartSuggestions(false);
-    setShowGoalSuggestions(false);
-    setCustomModalOpen(false);
-  }, []);
-
-  const handleSuggestionSelect = useCallback((type: "start" | "goal", value: string) => {
-    if (type === "start") {
-      setCustomStartTitle(value);
-      setShowStartSuggestions(false);
-    } else {
-      setCustomGoalTitle(value);
-      setShowGoalSuggestions(false);
-    }
-  }, []);
-
-  const handleLocaleChange = useCallback((nextLocale: "ja" | "en") => {
-    setCustomLocale(nextLocale);
-    setShowStartSuggestions(false);
-    setShowGoalSuggestions(false);
-  }, []);
-
-  const handleCustomSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedStart = customStartTitle.trim();
-    const trimmedGoal = customGoalTitle.trim();
-
-    if (!trimmedStart || !trimmedGoal) {
-      setCustomError("スタートとゴールの記事名を入力してください。");
-      return;
-    }
-
-    setCustomError(null);
-    setIsSubmittingCustom(true);
-    try {
-      await router.push({
-        pathname: "/game",
-        query: {
-          start: "custom",
-          startTitle: trimmedStart,
-          goalTitle: trimmedGoal,
-          locale: customLocale,
-        },
-      });
-      handleCloseCustomModal();
-    } catch (error) {
-      console.error("カスタムお題の開始に失敗しました", error);
-      setCustomError("お題の開始に失敗しました。時間をおいて再度お試しください。");
-    } finally {
-      setIsSubmittingCustom(false);
-    }
-  }, [customStartTitle, customGoalTitle, customLocale, router, handleCloseCustomModal]);
-
-  useEffect(() => {
-    if (!isCustomModalOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
-  }, [isCustomModalOpen]);
-
-  useEffect(() => {
-    if (!isCustomModalOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleCloseCustomModal();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isCustomModalOpen, handleCloseCustomModal]);
+  const handleOpenCustomModal = useCallback(() => setCustomModalOpen(true), []);
+  const handleCloseCustomModal = useCallback(() => setCustomModalOpen(false), []);
 
   useEffect(() => {
     let isCancelled = false;
@@ -200,7 +80,6 @@ export default function Home() {
       if (cached) {
         setDailyChallenge(cached);
       } else {
-        // No cached data, show loading state
         setIsDailyChallengeLoading(true);
       }
     }
@@ -231,412 +110,318 @@ export default function Home() {
     };
   }, []);
 
-  const dailyGoalTitle = dailyChallenge?.goal.title ?? "読み込み中";
-  const dailyStartTitle = dailyChallenge?.start.title ?? "読み込み中";
-  const dailyGoalDate = dailyChallenge?.date ?? new Date().toISOString().slice(0, 10);
   const isDailyChallengeLoaded = Boolean(dailyChallenge?.goal.title && dailyChallenge?.start.title);
-  const isCustomSubmitDisabled = isSubmittingCustom
-    || !customStartTitle.trim()
-    || !customGoalTitle.trim();
+  const dailyDate = dailyChallenge?.date ?? new Date().toISOString().slice(0, 10);
+  const hintQuery = isHintMode ? "&hint=1" : "";
+  const dailyHref = `/game?start=${isTimeAttackMode ? "daily-ta" : "daily"}${hintQuery}`;
+  const randomHref = `/game?start=random${hintQuery}`;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <header className="border-b border-white/10 bg-slate-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-4">
-              <Image
-                src="/w2.png"
-                alt="Wikipedia Golf アイコン"
-                width={64}
-                height={64}
-                className="h-14 w-14 rounded-2xl object-cover sm:h-16 sm:w-16"
-                priority
-              />
-              <div className="max-w-2xl">
-                <h1 className="text-2xl font-semibold leading-tight text-white sm:text-3xl md:text-4xl">
-                  Wikipedia Golf
-                </h1>
-                <p className="mt-2 text-sm text-slate-400 sm:text-base">
-                  知識の海で最短ルートを描こう
-                </p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-paper text-ink">
+      <Head>
+        <title>Wikipedia Golf — 知識の海で、最短ルートを描こう</title>
+      </Head>
 
-            {/* <div className="hidden md:flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-              <Link
-                className="w-full rounded-full bg-blue-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-blue-400 sm:w-auto"
-                href="/game?start=daily"
-              >
-                今日のお題でプレイ
-              </Link>
-              <Link
-                className="w-full rounded-full border border-blue-300/60 px-5 py-3 text-sm font-semibold text-blue-100 transition hover:border-blue-200 hover:text-white sm:w-auto"
-                href="/game?start=random"
-              >
-                ランダムに挑戦
-              </Link>
-              <button
-                type="button"
-                onClick={handleOpenCustomModal}
-                className="w-full rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-              >
-                カスタムお題を作成
-              </button>
-            </div> */}
+      <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-shell items-center justify-between px-4 sm:px-6">
+          <Link href="/" className="rounded-xl transition hover:opacity-80" aria-label="Wikipedia Golf">
+            <Wordmark size="sm" />
+          </Link>
+          <div className="flex items-center gap-2">
+            <a
+              href="https://github.com/shiryu2002/Wikipedia-Golf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-ink-2 transition hover:bg-ink/[0.06] hover:text-ink sm:inline-flex"
+            >
+              <GitHubIcon size={16} /> GitHub
+            </a>
+            <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-4 sm:px-6 sm:py-12">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="rounded-3xl bg-gradient-to-br from-blue-500 via-indigo-500 to-slate-900 p-8 text-white shadow-2xl">
-            <p className="text-sm text-white/70">
-              今日のお題
+      <main className="mx-auto w-full max-w-shell px-4 pb-24 sm:px-6">
+        {/* Hero */}
+        <section className="grid gap-10 pt-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-center lg:gap-14 lg:pt-20">
+          <div className="animate-fade-up">
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.3em] text-green">
+              <BallIcon /> A daily link-hopping game
             </p>
-            <p className="mt-2 flex items-center gap-2 text-3xl font-semibold leading-tight md:text-4xl">
-              スタート: {dailyStartTitle}
-              {isDailyChallengeLoading && !dailyChallenge?.start?.title && (
-                <CircularProgress size={24} className="text-white" sx={{ color: 'white' }} />
-              )}
+            <h1 className="mt-5 font-display text-[2.125rem] font-bold leading-[1.18] tracking-tight sm:text-5xl lg:text-[3.5rem]">
+              知識の海で、
+              <br />
+              最短ルートを描こう。
+            </h1>
+            <p className="mt-6 max-w-xl text-base leading-relaxed text-ink-2 sm:text-lg">
+              Wikipedia Golf は、スタート記事からリンクだけを辿って、ゴール記事にできるだけ少ない「打数」で到達するゲームです。
+              お題は毎日0時に更新。今日の一打を、友だちと競いましょう。
             </p>
-            <p className="mt-2 flex items-center gap-2 text-3xl font-semibold leading-tight md:text-4xl">
-              ゴール: {dailyGoalTitle}
-              {isDailyChallengeLoading && !dailyChallenge?.goal?.title && (
-                <CircularProgress size={24} className="text-white" sx={{ color: 'white' }} />
-              )}
-            </p>
-            <p className="mt-4 text-sm text-white/80">{dailyGoalDate} のチャレンジ</p>
-            <div className="mt-8 space-y-4">
-              {/* Daily Challenge Section with Mode Selector */}
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-medium text-white backdrop-blur transition hover:bg-white/15">
-                    <input
-                      type="checkbox"
-                      checked={isTimeAttackMode}
-                      onChange={(e) => setIsTimeAttackMode(e.target.checked)}
-                      className="h-4 w-4 cursor-pointer rounded border-white/30 bg-white/10 text-blue-500 focus:ring-2 focus:ring-blue-400/40 focus:ring-offset-0"
-                    />
-                    <span>タイムアタック(TA)</span>
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-medium text-white backdrop-blur transition hover:bg-white/15">
-                    <input
-                      type="checkbox"
-                      checked={isHintMode}
-                      onChange={(e) => setIsHintMode(e.target.checked)}
-                      className="h-4 w-4 cursor-pointer rounded border-white/30 bg-white/10 text-blue-500 focus:ring-2 focus:ring-blue-400/40 focus:ring-offset-0"
-                    />
-                    <span>ヒントあり</span>
-                  </label>
-                  <Link
-                    className={`flex-1 rounded-full px-6 py-3 text-center text-sm font-semibold shadow-lg transition sm:flex-initial ${
-                      isDailyChallengeLoaded
-                        ? "bg-white text-slate-900 hover:bg-slate-100"
-                        : "cursor-not-allowed bg-white/40 text-slate-500"
-                    }`}
-                    href={isDailyChallengeLoaded ? `/game?start=${isTimeAttackMode ? "daily-ta" : "daily"}${isHintMode ? "&hint=1" : ""}` : "#"}
-                    onClick={(e) => {
-                      if (!isDailyChallengeLoaded) {
-                        e.preventDefault();
-                      }
-                    }}
-                  >
-                    今日のお題でスタート
-                  </Link>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <ButtonLink href={randomHref} variant="primary" size="lg" leading={<DiceIcon size={18} />}>
+                ランダムなお題に挑戦
+              </ButtonLink>
+              <Button variant="secondary" size="lg" leading={<PenIcon size={18} />} onClick={handleOpenCustomModal}>
+                カスタムお題を作成
+              </Button>
+            </div>
+            <dl className="mt-10 grid max-w-md grid-cols-3 gap-3 border-t border-rule pt-6 sm:gap-4">
+              {[
+                { icon: <RouteIcon size={16} />, label: "リンクだけで進む", value: "検索なし" },
+                { icon: <FlagIcon size={16} />, label: "少ない打数が勝ち", value: "ゴルフ式" },
+                { icon: <CalendarIcon size={16} />, label: "毎日0時に更新", value: "日替わり" },
+              ].map((item) => (
+                <div key={item.label}>
+                  <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
+                    {item.icon}
+                    {item.value}
+                  </dt>
+                  <dd className="mt-1 text-[13px] font-medium text-ink sm:text-sm">{item.label}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {/* Today's ticket */}
+          <div className="animate-fade-up [animation-delay:120ms]">
+            <article className="relative overflow-hidden rounded-[1.75rem] border border-green/25 bg-paper-2 shadow-paper-lg">
+              <div className="bg-gradient-to-br from-green to-green-2 px-6 pb-8 pt-6 text-white sm:px-8">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.3em] text-white/80">
+                    <CalendarIcon size={14} /> Today&apos;s hole
+                  </p>
+                  <p className="tabular text-xs font-medium text-white/80">{formatJaDate(dailyDate)}</p>
+                </div>
+                <div className="mt-6 space-y-5">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">Start</p>
+                    {dailyChallenge?.start.title ? (
+                      <p className="mt-1 break-words font-display text-2xl font-bold leading-snug sm:text-3xl">
+                        {dailyChallenge.start.title}
+                      </p>
+                    ) : (
+                      <div className="mt-2 h-8 w-3/4 animate-pulse rounded-lg bg-white/25" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-white/60" aria-hidden>
+                    <span className="h-px flex-1 border-t border-dashed border-white/40" />
+                    <ArrowRightIcon size={16} />
+                    <span className="h-px flex-1 border-t border-dashed border-white/40" />
+                  </div>
+                  <div>
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/70">
+                      <FlagIcon size={12} /> Goal
+                    </p>
+                    {dailyChallenge?.goal.title ? (
+                      <p className="mt-1 break-words font-display text-2xl font-bold leading-snug sm:text-3xl">
+                        {dailyChallenge.goal.title}
+                      </p>
+                    ) : (
+                      <div className="mt-2 h-8 w-2/3 animate-pulse rounded-lg bg-white/25" />
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Secondary Actions */}
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Link
-                  className="flex-1 rounded-full border border-white/60 px-6 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/10"
-                  href={`/game?start=random${isHintMode ? "&hint=1" : ""}`}
-                >
-                  ランダムなお題に挑戦
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleOpenCustomModal}
-                  className="flex-1 rounded-full border border-white/40 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                >
-                  カスタムお題を作成
-                </button>
+              {/* perforation */}
+              <div className="relative h-0 border-t border-dashed border-rule-2">
+                <span className="absolute -left-3 -top-3 h-6 w-6 rounded-full bg-paper" />
+                <span className="absolute -right-3 -top-3 h-6 w-6 rounded-full bg-paper" />
               </div>
-            </div>
-          </div>
-          <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
-            <h2 className="text-2xl font-semibold">ゲームの遊び方</h2>
-            <p className="mt-4 text-xl text-slate-200">
-              Wikipediaゴルフは、スタート記事からリンクだけを辿り、ゴールの記事にできるだけ少ない手数で到達することを目指すシンプルなゲームです。
-            </p>
-            <ol className="mt-6 space-y-3 text-sm text-slate-200">
-              <li>スタートページを開き、リンクの行き先をイメージします。</li>
-              <li>目標となるゴール記事を確認し、ルートを思い描きます。</li>
-              <li>リンクを辿りながら最短を探し、手数を更新していきます。</li>
-              <li>ゴール到達後は結果をシェアして仲間と競い合いましょう。</li>
-            </ol>
-          </article>
-        </section>
 
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
-          <h2 className="text-2xl font-semibold">プレイの流れ</h2>
-          <div className="mt-6 grid gap-6 md:grid-cols-3">
-            <div className="rounded-2xl bg-white/10 p-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-blue-200">
-                Step 01
-              </p>
-              <h3 className="mt-3 text-lg font-semibold">お題を選ぶ</h3>
-              <p className="mt-2 text-sm text-slate-200">
-                今日のお題またはランダムスタートを選んでゲームを開始しましょう。
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-blue-200">
-                Step 02
-              </p>
-              <h3 className="mt-3 text-lg font-semibold">リンクを辿る</h3>
-              <p className="mt-2 text-sm text-slate-200">
-                直感や推理を頼りに、ゴール記事へとつながる可能性の高いリンクを選びます。
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/10 p-6">
-              <p className="text-xs uppercase tracking-[0.3em] text-blue-200">
-                Step 03
-              </p>
-              <h3 className="mt-3 text-lg font-semibold">結果を共有</h3>
-              <p className="mt-2 text-sm text-slate-200">
-                プレイログをシェアして、他のプレイヤーとルートや手数を比較しましょう。
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-2">
-          <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
-            <h2 className="text-2xl font-semibold">ゲームの魅力</h2>
-            <ul className="mt-6 space-y-4 text-sm text-slate-200">
-              <li>多彩な記事に触れることで、知らなかったトピックを発見できます。</li>
-              <li>最短ルートを考える戦略性があり、思考ゲームとしても楽しめます。</li>
-              <li>プレイログを振り返ることで、辿ったルートを他のプレイヤーと共有できます。</li>
-              <li>日替わりモードで、毎日全員が同じお題に挑戦できます。</li>
-            </ul>
-          </article>
-          <article className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white shadow-xl backdrop-blur">
-            <h2 className="text-2xl font-semibold">バグ報告はこちら</h2>
-            <ul className="mt-6 space-y-4 text-sm text-slate-200">
-              <li>
-                <a
-                  href="https://github.com/shiryu2002/Wikipedia-Golf/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-300 hover:underline hover:text-blue-400 text-xl"
+              <div className="space-y-3 px-6 py-6 sm:px-8">
+                <ModeToggle
+                  checked={isTimeAttackMode}
+                  onChange={setIsTimeAttackMode}
+                  label="タイムアタック"
+                  hint="打数に加えてタイムも記録。1手戻しは使えません。"
+                  icon={<ClockIcon size={18} />}
+                />
+                <ModeToggle
+                  checked={isHintMode}
+                  onChange={setIsHintMode}
+                  label="ヒントあり"
+                  hint="ゴール記事にリンクしている記事の一覧を見られます。"
+                  icon={<BulbIcon size={18} />}
+                />
+                <ButtonLink
+                  href={isDailyChallengeLoaded ? dailyHref : "#"}
+                  variant="accent"
+                  size="lg"
+                  full
+                  trailing={<ArrowRightIcon size={18} />}
+                  disabled={!isDailyChallengeLoaded}
+                  className="mt-2"
                 >
-                  GitHub Issues でバグ報告・要望を送る
-                </a>
+                  {isDailyChallengeLoading && !isDailyChallengeLoaded ? "お題を読み込み中…" : "今日のお題でスタート"}
+                </ButtonLink>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        {/* How to play */}
+        <section className="mt-24" aria-labelledby="how-to-play">
+          <div className="flex items-end justify-between gap-6">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">How to play</p>
+              <h2 id="how-to-play" className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                遊び方は、3ステップ。
+              </h2>
+            </div>
+          </div>
+          <ol className="mt-10 grid gap-5 md:grid-cols-3">
+            {[
+              {
+                step: "01",
+                title: "お題を選ぶ",
+                body: "今日のお題、ランダム、カスタムから選んでティーオフ。スタート記事がそのままコースになります。",
+                icon: <CalendarIcon size={22} />,
+              },
+              {
+                step: "02",
+                title: "リンクを辿る",
+                body: "記事内のリンクをクリックして次の記事へ。1クリックが1打。検索やURL入力は使えません。",
+                icon: <RouteIcon size={22} />,
+              },
+              {
+                step: "03",
+                title: "ゴールして共有",
+                body: "ゴール記事に着いたらホールアウト。打数とルートをXやテキストでシェアして、友だちと比べましょう。",
+                icon: <ShareIcon size={22} />,
+              },
+            ].map((item) => (
+              <li
+                key={item.step}
+                className="group relative rounded-card border border-rule bg-paper-2 p-6 shadow-paper transition hover:-translate-y-0.5 hover:shadow-paper-lg"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="grid h-11 w-11 place-items-center rounded-full bg-green-soft text-green">{item.icon}</span>
+                  <span
+                    className="tabular font-numeral text-4xl font-semibold text-rule-2 transition group-hover:text-green/50"
+                    style={{ fontVariationSettings: '"opsz" 96' }}
+                  >
+                    {item.step}
+                  </span>
+                </div>
+                <h3 className="mt-5 font-display text-xl font-bold">{item.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-2">{item.body}</p>
               </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Modes */}
+        <section className="mt-24 grid gap-5 lg:grid-cols-3" aria-labelledby="modes">
+          <div className="lg:col-span-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">Modes</p>
+            <h2 id="modes" className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">
+              3つの遊び方。
+            </h2>
+          </div>
+          {[
+            {
+              icon: <CalendarIcon size={20} />,
+              title: "今日のお題",
+              body: "全員が同じスタートとゴールに挑む日替わりモード。タイムアタックとヒントの有無を選べます。",
+              action: (
+                <ButtonLink href={dailyHref} size="sm" variant="secondary" disabled={!isDailyChallengeLoaded} trailing={<ArrowRightIcon size={14} />}>
+                  今日のお題へ
+                </ButtonLink>
+              ),
+            },
+            {
+              icon: <DiceIcon size={20} />,
+              title: "ランダム",
+              body: "スタートもゴールもランダム。思いもよらない記事の組み合わせから、最短の道筋を見つけましょう。",
+              action: (
+                <ButtonLink href={randomHref} size="sm" variant="secondary" trailing={<ArrowRightIcon size={14} />}>
+                  ランダムで遊ぶ
+                </ButtonLink>
+              ),
+            },
+            {
+              icon: <PenIcon size={20} />,
+              title: "カスタム",
+              body: "好きなスタートとゴールを指定。URLを共有すれば、友だちも同じお題に挑戦できます。日本語版・英語版に対応。",
+              action: (
+                <Button size="sm" variant="secondary" onClick={handleOpenCustomModal} trailing={<LinkIcon size={14} />}>
+                  お題を作る
+                </Button>
+              ),
+            },
+          ].map((item) => (
+            <article key={item.title} className="flex flex-col rounded-card border border-rule bg-paper-2 p-6 shadow-paper">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-paper-3 text-ink">{item.icon}</span>
+              <h3 className="mt-4 font-display text-xl font-bold">{item.title}</h3>
+              <p className="mt-2 flex-1 text-sm leading-relaxed text-ink-2">{item.body}</p>
+              <div className="mt-5">{item.action}</div>
+            </article>
+          ))}
+        </section>
+
+        {/* Why */}
+        <section className="mt-24 rounded-[1.75rem] border border-rule bg-paper-2 p-8 shadow-paper sm:p-12">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] lg:items-center">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">Why it&apos;s fun</p>
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                寄り道も、知識のうち。
+              </h2>
+              <p className="mt-4 text-sm leading-relaxed text-ink-2 sm:text-base">
+                目的地への最短ルートを考える戦略性と、思いがけない記事との出会い。
+                辿ったルートを振り返れば、あなたの頭の中の「知識の地図」が見えてきます。
+              </p>
+            </div>
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {[
+                "知らなかったトピックに、リンク1本で出会える。",
+                "最短ルートを推理する、思考ゲームとしての奥深さ。",
+                "辿ったルートをコピーして、友だちと比べられる。",
+                "日替わりモードで、毎日みんなが同じお題に挑戦。",
+              ].map((text) => (
+                <li key={text} className="flex gap-3 rounded-2xl bg-paper p-4 text-sm leading-relaxed text-ink">
+                  <span className="mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-green-soft text-green">
+                    <FlagIcon size={11} />
+                  </span>
+                  {text}
+                </li>
+              ))}
             </ul>
-          </article>
+          </div>
         </section>
       </main>
-      {isCustomModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8 backdrop-blur"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="w-[min(90vw,34rem)] rounded-3xl border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-8 text-white shadow-[0_35px_80px_-20px_rgba(15,23,42,0.8)]"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.35em] text-blue-200/80">
-                  Custom Challenge
-                </p>
-                <h2 className="mt-2 text-2xl font-semibold leading-tight">
-                  カスタムお題を作成
-                </h2>
-                <p className="mt-2 text-sm text-slate-300">
-                  スタートとゴールの記事名を入力すると、同じ条件でゲームを開始できます。
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleCloseCustomModal}
-                className="rounded-full border border-white/10 px-3 py-1 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:text-white"
-              >
-                閉じる
-              </button>
-            </div>
 
-            <form className="mt-8 space-y-6" onSubmit={handleCustomSubmit}>
-              <div>
-                <span className="text-xs uppercase tracking-[0.3em] text-blue-200">
-                  Locale
-                </span>
-                <div className="mt-3 inline-flex rounded-full border border-white/15 bg-white/5 p-1 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => handleLocaleChange("ja")}
-                    className={`rounded-full px-4 py-2 transition ${customLocale === "ja" ? "bg-blue-500 text-white shadow" : "text-slate-200 hover:text-white"}`}
-                  >
-                    日本語
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleLocaleChange("en")}
-                    className={`rounded-full px-4 py-2 transition ${customLocale === "en" ? "bg-blue-500 text-white shadow" : "text-slate-200 hover:text-white"}`}
-                  >
-                    English
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-slate-100" htmlFor="customStartTitle">
-                  スタート記事
-                </label>
-                <div
-                  className="relative mt-3"
-                  role="combobox"
-                  aria-expanded={showStartSuggestions && startSuggestions.length > 0}
-                  aria-haspopup="listbox"
-                  aria-controls="customStartSuggestions"
-                >
-                  <input
-                    id="customStartTitle"
-                    name="customStartTitle"
-                    value={customStartTitle}
-                    onChange={(event) => {
-                      setCustomStartTitle(event.target.value);
-                      setShowStartSuggestions(true);
-                    }}
-                    onFocus={() => setShowStartSuggestions(true)}
-                    onBlur={() => window.setTimeout(() => setShowStartSuggestions(false), 150)}
-                    className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder-slate-500 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    placeholder="例: 日本"
-                    autoFocus
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    aria-controls="customStartSuggestions"
-                  />
-                  {isStartSuggestionsLoading && (
-                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs text-slate-400">
-                      検索中…
-                    </span>
-                  )}
-                  {showStartSuggestions && startSuggestions.length > 0 && (
-                    <ul
-                      className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl"
-                      role="listbox"
-                      id="customStartSuggestions"
-                    >
-                      {startSuggestions.map((item) => (
-                        <li
-                          key={`start-${item}`}
-                          className="border-b border-white/5 last:border-none"
-                          role="option"
-                          aria-selected={false}
-                        >
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-slate-100 transition hover:bg-white/10"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => handleSuggestionSelect("start", item)}
-                          >
-                            <span className="truncate">{item}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-slate-100" htmlFor="customGoalTitle">
-                  ゴール記事
-                </label>
-                <div
-                  className="relative mt-3"
-                  role="combobox"
-                  aria-expanded={showGoalSuggestions && goalSuggestions.length > 0}
-                  aria-haspopup="listbox"
-                  aria-controls="customGoalSuggestions"
-                >
-                  <input
-                    id="customGoalTitle"
-                    name="customGoalTitle"
-                    value={customGoalTitle}
-                    onChange={(event) => {
-                      setCustomGoalTitle(event.target.value);
-                      setShowGoalSuggestions(true);
-                    }}
-                    onFocus={() => setShowGoalSuggestions(true)}
-                    onBlur={() => window.setTimeout(() => setShowGoalSuggestions(false), 150)}
-                    className="w-full rounded-2xl border border-white/15 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder-slate-500 transition focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
-                    placeholder="例: 光速"
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    aria-controls="customGoalSuggestions"
-                  />
-                  {isGoalSuggestionsLoading && (
-                    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs text-slate-400">
-                      検索中…
-                    </span>
-                  )}
-                  {showGoalSuggestions && goalSuggestions.length > 0 && (
-                    <ul
-                      className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl"
-                      role="listbox"
-                      id="customGoalSuggestions"
-                    >
-                      {goalSuggestions.map((item) => (
-                        <li
-                          key={`goal-${item}`}
-                          className="border-b border-white/5 last:border-none"
-                          role="option"
-                          aria-selected={false}
-                        >
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-slate-100 transition hover:bg-white/10"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => handleSuggestionSelect("goal", item)}
-                          >
-                            <span className="truncate">{item}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-
-              {customError && (
-                <p className="text-sm text-rose-300">{customError}</p>
-              )}
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={handleCloseCustomModal}
-                  className="w-full rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  disabled={isCustomSubmitDisabled}
-                  className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition sm:w-auto ${isCustomSubmitDisabled ? "cursor-not-allowed bg-blue-500/40 text-white/70" : "bg-blue-500 text-white shadow-lg hover:bg-blue-400"}`}
-                >
-                  {isSubmittingCustom ? "開始中…" : "この条件で開始"}
-                </button>
-              </div>
-            </form>
+      <footer className="border-t border-rule">
+        <div className="mx-auto flex max-w-shell flex-col items-start justify-between gap-6 px-4 py-10 sm:flex-row sm:items-center sm:px-6">
+          <div className="flex items-center gap-3">
+            <BrandMark size={28} />
+            <p className="text-sm text-ink-2">
+              Wikipedia Golf — 記事データは各言語版 Wikipedia より取得しています。
+            </p>
           </div>
+          <a
+            href="https://github.com/shiryu2002/Wikipedia-Golf/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-medium text-ink-2 transition hover:text-ink"
+          >
+            <GitHubIcon size={16} /> バグ報告・要望は GitHub Issues へ
+          </a>
         </div>
-      )}
+      </footer>
+
+      <CustomChallengeDialog open={isCustomModalOpen} onClose={handleCloseCustomModal} hintEnabled={isHintMode} />
     </div>
   );
 }
+
+const BallIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="9.5" cy="9.5" r="0.8" fill="currentColor" />
+    <circle cx="13.5" cy="8.5" r="0.8" fill="currentColor" />
+    <circle cx="14.5" cy="12.5" r="0.8" fill="currentColor" />
+    <circle cx="10.5" cy="13.5" r="0.8" fill="currentColor" />
+  </svg>
+);
