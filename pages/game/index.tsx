@@ -974,6 +974,7 @@ export default function GamePage() {
         isTimeAttackMode={isTimeAttackMode}
         elapsedTime={elapsedTime}
         locale={locale}
+        hintEnabled={isHintEnabled}
         onViewArticle={() => setIsResultDismissed(true)}
         onReturnToTitle={() => {
           leavingRef.current = true;

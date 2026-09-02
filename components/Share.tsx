@@ -7,6 +7,7 @@ import {
   CopyIcon,
   FlagIcon,
   HomeIcon,
+  LinkIcon,
   RefreshIcon,
   RouteIcon,
 } from "@/components/ui/Icons";
@@ -22,6 +23,8 @@ interface ShareModalProps {
   isTimeAttackMode: boolean;
   elapsedTime: number;
   locale: "en" | "ja";
+  /** Whether hints were on — carried into the shareable hole URL. */
+  hintEnabled?: boolean;
   onViewArticle: () => void;
   onReturnToTitle: () => void;
   onReplay: () => void;
@@ -46,12 +49,14 @@ export const ShareModal = ({
   isTimeAttackMode,
   elapsedTime,
   locale,
+  hintEnabled = false,
   onViewArticle,
   onReturnToTitle,
   onReplay,
 }: ShareModalProps) => {
   const { copied: isCopied, copy: copyText } = useCopyToClipboard();
   const { copied: isRouteCopied, copy: copyRoute } = useCopyToClipboard();
+  const { copied: isUrlCopied, copy: copyUrl } = useCopyToClipboard();
 
   const startTitle = history.length > 0 ? history[0].title : "";
   const defaultShareUrl = `${SITE_ORIGIN}/`;
@@ -65,6 +70,9 @@ export const ShareModal = ({
           });
           if (locale) {
             params.set("locale", locale);
+          }
+          if (hintEnabled) {
+            params.set("hint", "1");
           }
           return `${SITE_ORIGIN}/game?${params.toString()}`;
         })()
@@ -203,7 +211,7 @@ export const ShareModal = ({
           leading={isCopied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
           onClick={() => void copyText(shareText)}
         >
-          {isCopied ? "コピーしました" : "テキストをコピー"}
+          {isCopied ? "コピーしました" : "共有用テキストをコピー"}
         </Button>
         <Button
           variant={isRouteCopied ? "accent" : "secondary"}
@@ -212,6 +220,16 @@ export const ShareModal = ({
         >
           {isRouteCopied ? "コピーしました" : "ルートをコピー"}
         </Button>
+        {challengeShareUrl && (
+          <Button
+            variant={isUrlCopied ? "accent" : "secondary"}
+            leading={isUrlCopied ? <CheckIcon size={16} /> : <LinkIcon size={16} />}
+            onClick={() => void copyUrl(challengeShareUrl)}
+            className="sm:col-span-2"
+          >
+            {isUrlCopied ? "コピーしました" : "このホールのURLをコピー"}
+          </Button>
+        )}
       </div>
     </Dialog>
   );
