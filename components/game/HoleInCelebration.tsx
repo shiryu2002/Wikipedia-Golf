@@ -19,12 +19,20 @@ type HoleInCelebrationProps = {
 /* Scene geometry (SVG user units, viewBox 0 0 400 400) */
 const GREEN = { cx: 200, cy: 212, r: 148 };
 const CUP: Point = { x: 218, y: 172 };
+const TEE: Point = { x: 46, y: 368 };
+/** A long S across the green: up the left side, sweep right, curl into the cup. */
 const PATH: [Point, Point, Point, Point] = [
-  { x: -30, y: 405 },
-  { x: 110, y: 430 },
-  { x: 330, y: 300 },
+  TEE,
+  { x: 70, y: 235 },
+  { x: 340, y: 330 },
   CUP,
 ];
+
+/** Rough width of a label chip (CJK ≈ 1em, Latin ≈ 0.6em) at 11px. */
+const chipWidth = (text: string, fontSize = 11) =>
+  Array.from(text).reduce((sum, char) => sum + ((char.codePointAt(0) ?? 0) > 0x2e80 ? fontSize : fontSize * 0.6), 0) + 16;
+
+const clip = (text: string, max: number) => (Array.from(text).length > max ? `${Array.from(text).slice(0, max - 1).join("")}…` : text);
 
 const BALL_R = 11;
 /** Spacing of the dimple grid; the texture flows by travelled distance. */
@@ -50,6 +58,39 @@ const bezier = (t: number, [p0, p1, p2, p3]: typeof PATH): Point => {
     x: mt ** 3 * p0.x + 3 * mt ** 2 * t * p1.x + 3 * mt * t ** 2 * p2.x + t ** 3 * p3.x,
     y: mt ** 3 * p0.y + 3 * mt ** 2 * t * p1.y + 3 * mt * t ** 2 * p2.y + t ** 3 * p3.y,
   };
+};
+
+/** Cumulative arc length so motion and labels are spaced by distance, not by t. */
+const ARC = (() => {
+  const samples = 240;
+  const points: Point[] = [];
+  const lengths: number[] = [0];
+  let previous = bezier(0, PATH);
+  points.push(previous);
+  for (let index = 1; index <= samples; index += 1) {
+    const point = bezier(index / samples, PATH);
+    lengths.push(lengths[index - 1] + Math.hypot(point.x - previous.x, point.y - previous.y));
+    points.push(point);
+    previous = point;
+  }
+  return { points, lengths, total: lengths[samples] };
+})();
+
+/** Point at a fraction (0..1) of the path length. */
+const pointAtFraction = (fraction: number): Point => {
+  const target = Math.min(1, Math.max(0, fraction)) * ARC.total;
+  let low = 0;
+  let high = ARC.lengths.length - 1;
+  while (high - low > 1) {
+    const mid = (low + high) >> 1;
+    if (ARC.lengths[mid] <= target) low = mid;
+    else high = mid;
+  }
+  const span = ARC.lengths[high] - ARC.lengths[low] || 1;
+  const k = (target - ARC.lengths[low]) / span;
+  const a = ARC.points[low];
+  const b = ARC.points[high];
+  return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
 };
 
 /** Fast off the tee, long slow roll to the lip. */
@@ -87,7 +128,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
     const visible = hops.slice(0, 6);
     return visible.map((title, index) => {
       const t = (index + 1) / (visible.length + 1);
-      return { title, t, point: bezier(t, PATH) };
+      return { title, t, point: pointAtFraction(t), side: index % 2 === 0 ? ("right" as const) : ("left" as const) };
     });
   }, [hops]);
 
@@ -130,7 +171,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       const raw = Math.min(1, (now - start) / ROLL_MS);
       const eased = easeRoll(raw);
       setProgress(eased);
-      const pos = bezier(eased, PATH);
+      const pos = pointAtFraction(eased);
       if (ballRef.current) {
         ballRef.current.setAttribute("transform", `translate(${pos.x} ${pos.y})`);
       }
@@ -242,15 +283,30 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
             return (
               <g key={mark.title} opacity={lit ? 1 : 0} style={{ transition: "opacity 320ms ease" }}>
                 <circle cx={mark.point.x} cy={mark.point.y} r="4.5" fill="#F7F3EA" stroke="#1B1A17" strokeWidth="1.5" />
-                <g transform={`translate(${mark.point.x + 9} ${mark.point.y - 9})`}>
-                  <rect x="0" y="-11" rx="6" ry="6" width={Math.min(mark.title.length, 9) * 10.5 + 14} height="20" fill="#F7F3EA" opacity="0.94" />
-                  <text x="7" y="3.5" fontSize="10.5" fontWeight="600" fill="#1B1A17" fontFamily="var(--font-sans)">
-                    {mark.title.length > 9 ? `${mark.title.slice(0, 8)}…` : mark.title}
+                <g
+                  transform={`translate(${
+                    mark.side === "right" ? mark.point.x + 9 : mark.point.x - 9 - chipWidth(clip(mark.title, 9), 10.5)
+                  } ${mark.point.y - 9})`}
+                >
+                  <rect x="0" y="-11" rx="6" ry="6" width={chipWidth(clip(mark.title, 9), 10.5)} height="20" fill="#F7F3EA" opacity="0.94" />
+                  <text x="8" y="3.5" fontSize="10.5" fontWeight="600" fill="#1B1A17" fontFamily="var(--font-sans)">
+                    {clip(mark.title, 9)}
                   </text>
                 </g>
               </g>
             );
           })}
+
+          {/* tee marker + start label */}
+          <g>
+            <circle cx={TEE.x} cy={TEE.y} r="5" fill="#1B1A17" stroke="#F7F3EA" strokeWidth="1.5" />
+            <g transform={`translate(${TEE.x + 10} ${TEE.y + 4})`}>
+              <rect x="0" y="-11" rx="6" ry="6" width={chipWidth(clip(startTitle, 12))} height="21" fill="#F7F3EA" opacity="0.94" />
+              <text x="8" y="4" fontSize="11" fontWeight="700" fill="#1B1A17" fontFamily="var(--font-sans)">
+                {clip(startTitle, 12)}
+              </text>
+            </g>
+          </g>
 
           {/* cup */}
           <ellipse cx={CUP.x} cy={CUP.y + 3} rx="15" ry="6" fill="#000" opacity="0.28" />
@@ -274,6 +330,22 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
             />
             <circle cx={CUP.x} cy={CUP.y - 80} r="2.5" fill="#F7F3EA" />
           </g>
+          {/* goal label above the flag */}
+          {(() => {
+            const label = clip(goalTitle, 14);
+            const width = chipWidth(label) + 14;
+            const x = Math.min(Math.max(CUP.x - width / 2, 4), 396 - width);
+            return (
+              <g transform={`translate(${x} ${CUP.y - 112})`}>
+                <rect x="0" y="0" rx="7" ry="7" width={width} height="24" fill="#F7F3EA" opacity="0.96" />
+                <path d="M9 7v11" stroke="#1B1A17" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="M9.5 7h6l-1.3 2.2 1.3 2.2h-6z" fill="#B8860B" />
+                <text x="21" y="16" fontSize="11" fontWeight="700" fill="#1B1A17" fontFamily="var(--font-sans)">
+                  {label}
+                </text>
+              </g>
+            );
+          })()}
 
           {/* ball */}
           {phase !== "idle" && phase !== "done" && (
@@ -299,10 +371,6 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
           )}
         </svg>
 
-        {/* start label at the tee side */}
-        <p className="pointer-events-none absolute bottom-1 left-2 max-w-[45%] truncate rounded-full bg-paper-2/90 px-3 py-1 text-[11px] font-semibold text-ink shadow-paper">
-          <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-ink align-middle" /> {startTitle}
-        </p>
       </div>
 
       {/* the score stamp */}
