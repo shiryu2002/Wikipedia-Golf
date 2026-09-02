@@ -236,7 +236,9 @@ const generateDailyChallenge = async (
   locale: "ja" | "en" = "ja",
 ): Promise<DailyChallenge> => {
   const today = getJapanTodayDate();
-  const isoDate = today.toISOString().slice(0, 10);
+  // Format in JST explicitly: toISOString() would shift to UTC and write the
+  // previous day when this script runs on a JST machine.
+  const isoDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tokyo" }).format(new Date());
   const baseId = computeDailyBaseId(today);
 
   console.log(`\n=== デイリーチャレンジ生成開始 ===`);

@@ -61,6 +61,22 @@ const ModeToggle = ({ checked, onChange, label, hint, icon }: ToggleProps) => (
   </label>
 );
 
+/** An article title in the headline, styled like a wiki link. Links start today's hole. */
+const HoleTitle = ({ title, fallback, href }: { title?: string; fallback: string; href: string | null }) => {
+  if (!title) {
+    return <span className="inline-block text-ink-3">{fallback}</span>;
+  }
+  const classes =
+    "inline-block break-words text-green underline decoration-green/40 decoration-[3px] underline-offset-[0.22em] transition hover:decoration-green";
+  return href ? (
+    <Link href={href} className={`${classes} rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green/40`}>
+      {title}
+    </Link>
+  ) : (
+    <span className={classes}>{title}</span>
+  );
+};
+
 export default function Home() {
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [isDailyChallengeLoading, setIsDailyChallengeLoading] = useState(false);
@@ -145,18 +161,24 @@ export default function Home() {
         {/* Hero */}
         <section className="grid gap-10 pt-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-center lg:gap-14 lg:pt-20">
           <div className="animate-fade-up">
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.3em] text-green">
-              <BallIcon /> A daily link-hopping game
-            </p>
-            <h1 className="mt-5 font-display text-[2.125rem] font-bold leading-[1.18] tracking-tight sm:text-5xl lg:text-[3.5rem]">
-              知識の海で、
+            <p className="font-display text-sm font-medium tracking-wide text-green">リンクだけで、たどり着く。</p>
+            <h1 className="mt-5 font-display text-[2.125rem] font-bold leading-[1.3] tracking-tight sm:text-[2.75rem] lg:text-[3.25rem]">
+              今日のホールは、
               <br />
-              最短ルートを描こう。
+              <HoleTitle title={dailyChallenge?.start.title} fallback="あの記事" href={isDailyChallengeLoaded ? dailyHref : null} />
+              <span className="mx-1 sm:mx-2">から</span>
+              <HoleTitle title={dailyChallenge?.goal.title} fallback="この記事" href={isDailyChallengeLoaded ? dailyHref : null} />
+              <span className="ml-1 sm:ml-2">まで。</span>
+              <br />
+              何打で行ける？
             </h1>
-            <p className="mt-6 max-w-xl text-base leading-relaxed text-ink-2 sm:text-lg">
-              Wikipedia Golf は、スタート記事からリンクだけを辿って、ゴール記事にできるだけ少ない「打数」で到達するゲームです。
-              お題は毎日0時に更新。今日の一打を、友だちと競いましょう。
-            </p>
+            <div className="mt-7 max-w-xl space-y-4 text-[15px] leading-[1.9] text-ink-2 sm:text-base">
+              <p>
+                ルールはひとつ。記事の中のリンクだけを踏んで、ゴールの記事に着くこと。検索も、URLの直打ちもなし。
+                1クリックが1打で、少ないほどうまい。
+              </p>
+              <p>最短を狙って外した分だけ、知らない話に出会う。それも込みで、このゲームです。</p>
+            </div>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <ButtonLink href={randomHref} variant="primary" size="lg" leading={<DiceIcon size={18} />}>
                 ランダムなお題に挑戦
@@ -165,21 +187,10 @@ export default function Home() {
                 カスタムお題を作成
               </Button>
             </div>
-            <dl className="mt-10 grid max-w-md grid-cols-3 gap-3 border-t border-rule pt-6 sm:gap-4">
-              {[
-                { icon: <RouteIcon size={16} />, label: "リンクだけで進む", value: "検索なし" },
-                { icon: <FlagIcon size={16} />, label: "少ない打数が勝ち", value: "ゴルフ式" },
-                { icon: <CalendarIcon size={16} />, label: "毎日0時に更新", value: "日替わり" },
-              ].map((item) => (
-                <div key={item.label}>
-                  <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">
-                    {item.icon}
-                    {item.value}
-                  </dt>
-                  <dd className="mt-1 text-[13px] font-medium text-ink sm:text-sm">{item.label}</dd>
-                </div>
-              ))}
-            </dl>
+            <p className="mt-10 max-w-xl border-t border-rule pt-5 text-[13px] leading-relaxed text-ink-3">
+              お題は毎日0時に入れ替わります。同じ日なら、誰が挑んでも同じホール。
+              1手戻しはタイムアタック以外で使えます。
+            </p>
           </div>
 
           {/* Today's ticket */}
@@ -415,13 +426,3 @@ export default function Home() {
     </div>
   );
 }
-
-const BallIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
-    <circle cx="12" cy="12" r="8" />
-    <circle cx="9.5" cy="9.5" r="0.8" fill="currentColor" />
-    <circle cx="13.5" cy="8.5" r="0.8" fill="currentColor" />
-    <circle cx="14.5" cy="12.5" r="0.8" fill="currentColor" />
-    <circle cx="10.5" cy="13.5" r="0.8" fill="currentColor" />
-  </svg>
-);
