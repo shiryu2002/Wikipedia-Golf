@@ -26,6 +26,19 @@ const PATH: [Point, Point, Point, Point] = [
   CUP,
 ];
 
+const BALL_R = 11;
+/** Spacing of the dimple grid; the texture flows by travelled distance. */
+const DIMPLE_PERIOD = 3.4;
+const DIMPLES: Point[] = (() => {
+  const points: Point[] = [];
+  for (let row = -4; row <= 4; row += 1) {
+    for (let col = -6; col <= 6; col += 1) {
+      points.push({ x: col * DIMPLE_PERIOD + (row % 2 ? DIMPLE_PERIOD / 2 : 0), y: row * DIMPLE_PERIOD });
+    }
+  }
+  return points;
+})();
+
 const ROLL_MS = 2100;
 const ROLL_DELAY_MS = 350;
 const DROP_MS = 420;
@@ -57,6 +70,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
   const [progress, setProgress] = useState(0);
   const [trail, setTrail] = useState<Point[]>([]);
   const ballRef = useRef<SVGGElement>(null);
+  const dimpleRef = useRef<SVGGElement>(null);
   const skipRef = useRef<(() => void) | null>(null);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
@@ -94,6 +108,9 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
     let frame = 0;
     let start = 0;
     let lastSample = -1;
+    let lastPos: Point = PATH[0];
+    let travelled = 0;
+    let heading = 0;
     const timers: number[] = [];
     const points: Point[] = [];
 
@@ -116,6 +133,20 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       const pos = bezier(eased, PATH);
       if (ballRef.current) {
         ballRef.current.setAttribute("transform", `translate(${pos.x} ${pos.y})`);
+      }
+      // Rolling: seen from above, the top of a rolling ball moves forward
+      // relative to its centre at the ball's own speed, so the dimple texture
+      // flows in the direction of travel by the distance travelled.
+      const dx = pos.x - lastPos.x;
+      const dy = pos.y - lastPos.y;
+      const step = Math.hypot(dx, dy);
+      if (step > 0.01) {
+        travelled += step;
+        heading = (Math.atan2(dy, dx) * 180) / Math.PI;
+        lastPos = pos;
+      }
+      if (dimpleRef.current) {
+        dimpleRef.current.setAttribute("transform", `rotate(${heading.toFixed(2)}) translate(${(travelled % DIMPLE_PERIOD).toFixed(3)} 0)`);
       }
       if (eased - lastSample > 0.03 && eased < 0.985) {
         lastSample = eased;
@@ -177,8 +208,13 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
               <stop offset="0" stopColor="#ffffff" />
               <stop offset="1" stopColor="#cfcabc" />
             </radialGradient>
-            <clipPath id="hi-clip">
-              <circle cx={GREEN.cx} cy={GREEN.cy} r={GREEN.r} />
+            <radialGradient id="hi-ball-shade" cx="36%" cy="32%" r="72%">
+              <stop offset="0" stopColor="#000" stopOpacity="0" />
+              <stop offset="0.62" stopColor="#000" stopOpacity="0" />
+              <stop offset="1" stopColor="#000" stopOpacity="0.38" />
+            </radialGradient>
+            <clipPath id="hi-ballclip">
+              <circle r={BALL_R} />
             </clipPath>
           </defs>
 
@@ -217,13 +253,13 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
           })}
 
           {/* cup */}
-          <ellipse cx={CUP.x} cy={CUP.y + 3} rx="12" ry="5" fill="#000" opacity="0.28" />
-          <circle cx={CUP.x} cy={CUP.y} r="9.5" fill="#12110f" />
-          <circle cx={CUP.x} cy={CUP.y} r="9.5" fill="none" stroke="#F7F3EA" strokeOpacity="0.55" strokeWidth="1.2" />
+          <ellipse cx={CUP.x} cy={CUP.y + 3} rx="15" ry="6" fill="#000" opacity="0.28" />
+          <circle cx={CUP.x} cy={CUP.y} r="12.5" fill="#12110f" />
+          <circle cx={CUP.x} cy={CUP.y} r="12.5" fill="none" stroke="#F7F3EA" strokeOpacity="0.55" strokeWidth="1.2" />
           {landed && (
             <>
-              <circle cx={CUP.x} cy={CUP.y} r="12" fill="none" stroke="#E8C86A" strokeWidth="2" className="hi-ripple" />
-              <circle cx={CUP.x} cy={CUP.y} r="12" fill="none" stroke="#F7F3EA" strokeWidth="1.5" className="hi-ripple [animation-delay:160ms]" />
+              <circle cx={CUP.x} cy={CUP.y} r="15" fill="none" stroke="#E8C86A" strokeWidth="2" className="hi-ripple" />
+              <circle cx={CUP.x} cy={CUP.y} r="15" fill="none" stroke="#F7F3EA" strokeWidth="1.5" className="hi-ripple [animation-delay:160ms]" />
             </>
           )}
 
@@ -244,13 +280,20 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
             <g ref={ballRef} transform={`translate(${PATH[0].x} ${PATH[0].y})`}>
               {/* inner group takes the CSS drop animation so it doesn't fight the translate above */}
               <g className={phase === "dropped" ? "hi-ball-drop" : ""}>
-                <ellipse cx="2" cy="7" rx="8" ry="3.5" fill="#000" opacity="0.28" />
-                <circle r="8.5" fill="url(#hi-ball)" />
-                <circle cx="-2.5" cy="-3" r="0.9" fill="#1B1A17" opacity="0.25" />
-                <circle cx="1.5" cy="-4" r="0.9" fill="#1B1A17" opacity="0.25" />
-                <circle cx="3.5" cy="0" r="0.9" fill="#1B1A17" opacity="0.25" />
-                <circle cx="-1" cy="1.5" r="0.9" fill="#1B1A17" opacity="0.25" />
-                <circle cx="-4" cy="3" r="0.9" fill="#1B1A17" opacity="0.25" />
+                <ellipse cx="2.5" cy="9" rx="10" ry="4.5" fill="#000" opacity="0.28" />
+                <circle r={BALL_R} fill="url(#hi-ball)" />
+                {/* dimple texture, clipped to the ball and flowing with travel */}
+                <g clipPath="url(#hi-ballclip)">
+                  <g ref={dimpleRef}>
+                    {DIMPLES.map((d, index) => (
+                      <circle key={index} cx={d.x} cy={d.y} r="0.8" fill="#1B1A17" opacity="0.2" />
+                    ))}
+                  </g>
+                </g>
+                {/* fixed lighting: shade at the far edge, highlight near the light */}
+                <circle r={BALL_R} fill="url(#hi-ball-shade)" />
+                <ellipse cx="-3.8" cy="-4.6" rx="3.8" ry="2.6" fill="#fff" opacity="0.6" />
+                <circle r={BALL_R} fill="none" stroke="#000" strokeOpacity="0.18" strokeWidth="0.6" />
               </g>
             </g>
           )}
