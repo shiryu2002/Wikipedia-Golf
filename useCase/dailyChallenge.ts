@@ -1,10 +1,12 @@
 /**
- * Daily challenge — shared types, date helpers, the client-side loader for
- * the pre-generated challenge file, and article fetching.
+ * Daily challenge — types, date helpers, the deterministic pick from the
+ * pre-inspected article pool, and article fetching.
  *
- * The challenge file (public/daily-challenge.json) is a rolling buffer of
- * days generated ahead of time by scripts/generate-daily-challenge.ts, so the
- * client only ever looks up today's entry; it never has to compute anything.
+ * public/daily-pool.json holds ~2,600 good/featured articles with their
+ * backlink and outlink counts (built once by scripts/build-daily-pool.ts).
+ * Today's hole is a pure function of (date, pool): hash the date, index into
+ * the eligible goals and starts. No server, no cron, no API call needed to
+ * know what today's hole is — and any past date can be recomputed.
  */
 
 export type Locale = "ja" | "en";
@@ -21,28 +23,33 @@ export type DailyChallengeStats = {
   startOutlinks: number;
 };
 
-export type DailyChallengeDay = {
+/** The challenge for one date, as consumed by the UI. */
+export type DailyChallenge = {
+  locale: Locale;
+  date: string;
   start: DailyChallengeEntry;
   goal: DailyChallengeEntry;
   stats?: DailyChallengeStats;
 };
 
-/** The challenge for one date, as consumed by the UI. */
-export type DailyChallenge = DailyChallengeDay & {
-  locale: Locale;
-  date: string;
-};
+/** [pageId, title, backlinks, outlinks] */
+export type DailyPoolArticleTuple = [number, string, number, number];
 
-/** Shape of public/daily-challenge.json. */
-export type DailyChallengeFile = {
-  version: 2;
+export type DailyPoolFile = {
+  version: 3;
   locale: Locale;
   generatedAt: string;
-  days: Record<string, DailyChallengeDay>;
+  sources: string[];
+  articles: DailyPoolArticleTuple[];
 };
 
-export const DAILY_CHALLENGE_FILE_VERSION = 2 as const;
-export const DAILY_CHALLENGE_PATH = "/daily-challenge.json";
+export const DAILY_POOL_FILE_VERSION = 3 as const;
+export const DAILY_POOL_PATH = "/daily-pool.json";
+
+/** A goal must be reachable: at least this many articles link to it. */
+export const GOAL_MIN_BACKLINKS = 20;
+/** A start must give you somewhere to go. */
+export const START_MIN_OUTLINKS = 20;
 
 /* ------------------------------------------------------------------ */
 /* Dates (the game day rolls over at midnight JST)                      */
@@ -66,52 +73,90 @@ export const addDays = (isoDate: string, days: number): string => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Challenge file                                                        */
+/* Deterministic pick                                                    */
 /* ------------------------------------------------------------------ */
 
-const isEntry = (value: unknown): value is DailyChallengeEntry =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as DailyChallengeEntry).id === "number" &&
-  typeof (value as DailyChallengeEntry).title === "string" &&
-  (value as DailyChallengeEntry).title.trim().length > 0;
+/** FNV-1a 32-bit. Small, deterministic, good enough for indexing a pool. */
+export const hashString = (input: string): number => {
+  let hash = 0x811c9dc5;
+  for (const char of input) {
+    hash ^= char.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+};
 
-export const isDailyChallengeFile = (value: unknown): value is DailyChallengeFile => {
+export const isDailyPoolFile = (value: unknown): value is DailyPoolFile => {
   if (typeof value !== "object" || value === null) return false;
-  const file = value as Partial<DailyChallengeFile>;
+  const file = value as Partial<DailyPoolFile>;
   return (
-    file.version === DAILY_CHALLENGE_FILE_VERSION &&
+    file.version === DAILY_POOL_FILE_VERSION &&
     (file.locale === "ja" || file.locale === "en") &&
-    typeof file.days === "object" &&
-    file.days !== null
+    Array.isArray(file.articles) &&
+    file.articles.length > 0
   );
 };
 
-/** Pick one date out of the file. Returns null when the date is missing. */
-export const pickDailyChallenge = (
-  file: unknown,
-  locale: Locale,
-  date: string,
-): DailyChallenge | null => {
-  if (!isDailyChallengeFile(file) || file.locale !== locale) return null;
-  const day = file.days[date];
-  if (!day || !isEntry(day.start) || !isEntry(day.goal)) return null;
-  return { locale, date, start: day.start, goal: day.goal, stats: day.stats };
+const toEntry = (tuple: DailyPoolArticleTuple): DailyChallengeEntry => ({ id: tuple[0], title: tuple[1] });
+
+/**
+ * The hole for a given date. Pure: same pool + same date → same hole.
+ * Returns null when the pool is unusable.
+ */
+export const pickDailyChallenge = (pool: unknown, locale: Locale, date: string): DailyChallenge | null => {
+  if (!isDailyPoolFile(pool) || pool.locale !== locale || !ISO_DATE.test(date)) return null;
+
+  const goals = pool.articles.filter((article) => article[2] >= GOAL_MIN_BACKLINKS);
+  const starts = pool.articles.filter((article) => article[3] >= START_MIN_OUTLINKS);
+  if (goals.length === 0 || starts.length < 2) return null;
+
+  const goal = goals[hashString(`${date}|goal`) % goals.length];
+
+  let startIndex = hashString(`${date}|start`) % starts.length;
+  let start = starts[startIndex];
+  if (start[0] === goal[0]) {
+    startIndex = (startIndex + 1) % starts.length;
+    start = starts[startIndex];
+  }
+
+  return {
+    locale,
+    date,
+    start: toEntry(start),
+    goal: toEntry(goal),
+    stats: { goalBacklinks: goal[2], startOutlinks: start[3] },
+  };
 };
 
-/** Fetch the pre-generated file and return today's challenge. */
+let poolPromise: Promise<unknown> | null = null;
+
+/** Fetch (and memoise) the pool file. */
+export const fetchDailyPool = async (): Promise<unknown> => {
+  if (!poolPromise) {
+    poolPromise = fetch(DAILY_POOL_PATH)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`お題プールの読み込みに失敗しました (HTTP ${response.status})`);
+        }
+        return response.json();
+      })
+      .catch((error) => {
+        poolPromise = null;
+        throw error;
+      });
+  }
+  return poolPromise;
+};
+
+/** Today's (or the given date's) challenge. */
 export const fetchDailyChallenge = async (
   locale: Locale = "ja",
   date: string = getJstDateString(),
 ): Promise<DailyChallenge> => {
-  const response = await fetch(DAILY_CHALLENGE_PATH, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error(`デイリーチャレンジの読み込みに失敗しました (HTTP ${response.status})`);
-  }
-  const file = await response.json();
-  const challenge = pickDailyChallenge(file, locale, date);
+  const pool = await fetchDailyPool();
+  const challenge = pickDailyChallenge(pool, locale, date);
   if (!challenge) {
-    throw new Error(`${date} のお題がまだ用意されていません`);
+    throw new Error("お題プールを読み取れませんでした");
   }
   return challenge;
 };

@@ -27,14 +27,14 @@ import {
   TrophyIcon,
 } from "@/components/ui/Icons";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
-import { type DailyChallenge, fetchArticle } from "@/useCase/dailyChallenge";
+import { loadArticle, loadGoalBacklinks } from "@/useCase/articleCache";
+import { type DailyChallenge } from "@/useCase/dailyChallenge";
 import {
   clearExpiredDailyChallengeCache,
   loadDailyChallengeWithCache,
   readCachedDailyChallenge,
   writeDailyChallengeCache,
 } from "@/useCase/dailyChallengeCache";
-import countReferer from "@/useCase/referer";
 
 const isDailyGameMode = (mode: string): boolean => {
   return mode === "daily" || mode === "daily-ta";
@@ -46,12 +46,6 @@ type StartOptions = {
   startTitle?: string;
   goalTitle?: string;
   locale?: "en" | "ja";
-};
-
-type GoalDetailsCacheEntry = {
-  html: string;
-  numOfRef: number;
-  hints: string[];
 };
 
 export default function GamePage() {
@@ -85,8 +79,6 @@ export default function GamePage() {
   const [activeSheet, setActiveSheet] = useState<DockSheet | null>(null);
   const [isResultDismissed, setIsResultDismissed] = useState(false);
   const ignoreNextContentRef = useRef(false);
-  const goalDetailsCacheRef = useRef(new Map<string, GoalDetailsCacheEntry>());
-  const articleCacheRef = useRef(new Map<string, { title: string; html: string }>());
   const gameStateRef = useRef(gameState);
   const leavingRef = useRef(false);
   gameStateRef.current = gameState;
@@ -210,53 +202,17 @@ export default function GamePage() {
     const activeLocale = options.localeOverride ?? locale;
     setGoal(options.title);
 
-    // Use a single canonical cache key based on pageId if available, otherwise title
-    const canonicalCacheKey =
-      options.pageId !== undefined
-        ? `${activeLocale}:goal:id:${options.pageId}`
-        : `${activeLocale}:goal:title:${options.title}`;
-
-    const cached = goalDetailsCacheRef.current.get(canonicalCacheKey);
-    if (cached) {
-      setNumOfReferer(cached.numOfRef);
-      setHints(cached.hints);
-      setGoalArticle(cached.html);
-      return;
-    }
     try {
-      const goalArticle = await fetchArticle(activeLocale, {
-        id: options.pageId,
-        title: options.title,
-      });
-
-      const resolvedGoalId = goalArticle.id ?? options.pageId;
-
-      const refResult = await countReferer(goalArticle.title, activeLocale);
-      const normalizedHints: string[] = Array.isArray(refResult.hints)
-        ? refResult.hints.map((hint) => String(hint))
-        : [];
-
-      const entry: GoalDetailsCacheEntry = {
-        html: goalArticle.html,
-        numOfRef: Number(refResult.numOfRef ?? 0),
-        hints: normalizedHints,
-      };
-
-      // Store with canonical key only to avoid cache inconsistency
-      goalDetailsCacheRef.current.set(canonicalCacheKey, entry);
-      if (resolvedGoalId !== undefined && options.pageId === undefined) {
-        // When called with title only, also cache by resolved ID
-        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
-      } else if (resolvedGoalId !== undefined && resolvedGoalId !== options.pageId) {
-        // When resolved ID differs from input ID, cache both
-        goalDetailsCacheRef.current.set(`${activeLocale}:goal:id:${resolvedGoalId}`, entry);
-      }
+      // Both hit the module cache, which the home page may have warmed.
+      const goalArticle = await loadArticle(activeLocale, { id: options.pageId, title: options.title });
+      const refs = await loadGoalBacklinks(activeLocale, goalArticle.title);
 
       setGoal(goalArticle.title);
-      setNumOfReferer(entry.numOfRef);
-      setHints(entry.hints);
-      setGoalArticle(entry.html);
+      setNumOfReferer(refs.numOfRef);
+      setHints(refs.hints);
+      setGoalArticle(goalArticle.html);
 
+      const resolvedGoalId = goalArticle.id ?? options.pageId;
       if (options.pageId !== undefined) {
         setDailyChallenge((prev) => {
           if (!prev || prev.locale !== activeLocale) {
@@ -425,24 +381,14 @@ export default function GamePage() {
 
   const fetchTitle = async (requestedTitle: string) => {
     const articleUrl = `https://${locale}.wikipedia.org/wiki/${encodeURIComponent(requestedTitle)}`;
-    const cacheKey = `${locale}:${requestedTitle}`;
     const shouldSkipProgressUpdate = ignoreNextContentRef.current;
-
-    const cached = articleCacheRef.current.get(cacheKey);
-    if (cached !== undefined) {
-      setIsLoading(false);
-      applyArticleContent(cached.title, cached.html, shouldSkipProgressUpdate, articleUrl);
-      finalizeArticleLoad(shouldSkipProgressUpdate);
-      return;
-    }
 
     setIsLoading(true);
     try {
-      // Tries the page id first (daily start), then the title. Never "id + 1".
-      const result = await fetchArticle(locale, { id: articleId, title: requestedTitle });
-      const entry = { title: result.title || requestedTitle, html: result.html };
-      articleCacheRef.current.set(cacheKey, entry);
-      applyArticleContent(entry.title, entry.html, shouldSkipProgressUpdate, articleUrl);
+      // The module cache dedupes with any prefetch and remembers past hops
+      // (so "1手戻す" is instant). Tries the page id first, then the title.
+      const result = await loadArticle(locale, { id: articleId, title: requestedTitle });
+      applyArticleContent(result.title || requestedTitle, result.html, shouldSkipProgressUpdate, articleUrl);
     } catch (error) {
       console.error("記事の取得に失敗しました", error);
       setContent("");

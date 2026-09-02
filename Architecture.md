@@ -18,7 +18,7 @@
 | build | `next build` | 本番用ビルドを生成 |
 | start | `next start` | ビルド済みアプリを起動 |
 | lint | `eslint .` | ESLint による静的解析 |
-| generate-daily | `tsx scripts/generate-daily-challenge.ts` | 今日のお題 JSON を生成 |
+| build-daily-pool | `tsx scripts/build-daily-pool.ts` | 今日のお題の候補プール JSON を生成（不定期） |
 
 ## ディレクトリ構成
 
@@ -43,6 +43,7 @@
 │   │   ├── DailyCard.tsx      # 今日のお題カード
 │   │   ├── HintsPanel.tsx     # ヒント（ゴールのリンク元）一覧 + 絞り込み
 │   │   ├── ArticleView.tsx    # 記事本文の表示（マストヘッド, 状態表示）
+│   │   ├── HoleInCelebration.tsx  # ゴール時の「ホールイン」演出（グリーン, ボール, 打数スタンプ）
 │   │   └── MobileDock.tsx     # モバイル用ボトムドック
 │   └── home/
 │       ├── HoleBoard.tsx      # TOP の主役: 今日のお題 / ランダム / カスタムをタブで切り替えるコース図
@@ -56,16 +57,19 @@
 │   ├── index.tsx              # タイトル / ランディング
 │   ├── game/index.tsx         # ゲーム本体
 │   ├── 404.tsx
+│   ├── mock/goal.tsx          # ゴール演出のプレビュー（アプリからはリンクしない）
 │   └── iframe/index.tsx       # iframe 埋め込みの検証用 UI
 ├── public/
-│   └── daily-challenge.json   # GitHub Actions が毎日更新
+│   └── daily-pool.json        # 良質/秀逸な記事の候補プール（不定期に再生成）
 ├── scripts/
-│   └── generate-daily-challenge.ts
+│   └── build-daily-pool.ts
 ├── styles/
 │   └── globals.css            # デザイントークン, ベース, 記事本文のタイポグラフィ
 ├── useCase/
-│   ├── dailyChallenge.ts
+│   ├── articleCache.ts          # 記事 HTML / 被リンクのメモリキャッシュ + TOP からの先読み
+│   ├── dailyChallenge.ts        # 日付ハッシュによるお題の決定, 記事取得
 │   ├── dailyChallengeCache.ts
+│   ├── dailyPoolBuilder.ts      # プール生成（スクリプト専用）
 │   └── referer.ts
 ├── utils/time.ts
 ├── tailwind.config.ts
@@ -79,15 +83,16 @@
 - `components/Share.tsx`: クリア時の結果ダイアログ。X 共有、共有テキスト・ルートのコピー、タイトルへ戻る、同じお題でもう一度。
 - `components/game/*`: ゲーム画面をデスクトップ（サイドバー）とモバイル（ボトムドック + シート）の両方で組み立てるための部品。同じコンポーネントを `frame="panel" | "bare"` で使い分ける。
 - `useCase/referer.ts`: Wikipedia API の backlinks エンドポイントを利用して、目標記事へのリンク元数とタイトル一覧を取得するドメインロジック。
-- `useCase/dailyChallenge.ts`: 今日のお題の型・日付ヘルパー・`public/daily-challenge.json` から今日の分を取り出すローダー、記事本文の取得（`fetchArticle`: ID → タイトルの順に試す。リダイレクトは追従。「ID+1」のような別記事へのフォールバックはしない）。
-- `useCase/dailyChallengeGenerator.ts`: お題の選定ロジック本体（スクリプト専用、ブラウザには含まれない）。良質な記事・秀逸な記事のカテゴリを候補プールにし、日付ハッシュで決定的に選び、被リンク数・発リンク数・リダイレクト／曖昧さ回避／直接リンクを検査する。14 日分のローリングバッファを補充する。
+- `useCase/dailyChallenge.ts`: 今日のお題の決定（`pickDailyChallenge`: プールと日付だけから決まる純関数。日付ハッシュでゴール・スタートを選ぶ）、プールの読み込み、記事本文の取得（`fetchArticle`: ID → タイトルの順に試す。リダイレクトは追従。「ID+1」のような別記事へのフォールバックはしない）。
+- `useCase/dailyPoolBuilder.ts`: プール生成ロジック（スクリプト専用、ブラウザには含まれない）。良質な記事・秀逸な記事を 1 件ずつ検査し、被リンク数・発リンク数を記録する。
+- `useCase/articleCache.ts`: 記事 HTML と被リンク一覧の Promise ベースのメモリキャッシュ（LRU）。ページ遷移をまたいで生き、同時要求は1リクエストに束ねる。`prefetchHole` が TOP で今日のお題のスタート／ゴール記事と被リンクを先読みし、ゲーム画面は即表示になる。省データモードでは先読みしない。
 - `useCase/dailyChallengeCache.ts`: 今日のお題の localStorage ミラー（再訪時にスケルトンを出さないため）。
-- `scripts/generate-daily-challenge.ts`: 上記ジェネレーターを呼ぶ薄い CLI。GitHub Actions が毎日実行。
+- `scripts/build-daily-pool.ts`: 上記ビルダーを呼ぶ薄い CLI。必要なときだけ手動（または Actions の手動実行）で走らせる。
 - `styles/globals.css`: デザイントークン（CSS 変数）、ベーススタイル、`.article-content` 配下の Wikipedia HTML の整形。
 
 ## 状態管理とデータフロー
 
-1. ユーザーが「スタート」を押すと、デイリーモードでは `public/daily-challenge.json`（14 日分の先読み）から今日のエントリを取り出して開始／ゴール記事を読み込み、通常モードでは `getGoal` と `pickStart` がランダム記事を取得。
+1. ユーザーが「スタート」を押すと、デイリーモードでは `public/daily-pool.json` から日付ハッシュで決めた開始／ゴール記事を読み込み、通常モードでは `getGoal` と `pickStart` がランダム記事を取得。
 2. 目標記事の被リンク情報を `countReferer` が取得し、ヒント (リンク元タイトル一覧) として `HintsPanel` に渡す。
 3. 記事本文は `dangerouslySetInnerHTML` で描画し、記事内リンクのクリックをカスタムハンドラでフックして内部遷移と打数更新を実現。
 4. ゴールタイトルと一致するとゲームオーバー状態に遷移し、`ShareModal` が結果共有ダイアログを表示。

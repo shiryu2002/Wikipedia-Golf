@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "generate-daily": "tsx scripts/generate-daily-challenge.ts"
+    "build-daily-pool": "tsx scripts/build-daily-pool.ts",
+    "preview-daily": "tsx scripts/preview-daily.ts"
   },
   "dependencies": {
     "@types/node": "20.10.6",

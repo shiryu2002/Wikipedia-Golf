@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { HoleBoard } from "@/components/home/HoleBoard";
+import { prefetchHole } from "@/useCase/articleCache";
 import { CalendarIcon, GitHubIcon, RouteIcon, ShareIcon } from "@/components/ui/Icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { DailyChallenge } from "@/useCase/dailyChallenge";
@@ -25,6 +26,12 @@ const SectionHeading = ({ id, title }: { id: string; title: string }) => (
 export default function Home() {
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [isDailyChallengeLoading, setIsDailyChallengeLoading] = useState(false);
+
+  // Warm the article cache so "このホールをプレイ" opens instantly.
+  useEffect(() => {
+    if (!dailyChallenge?.start.title || !dailyChallenge?.goal.title) return;
+    prefetchHole("ja", dailyChallenge);
+  }, [dailyChallenge]);
 
   useEffect(() => {
     let isCancelled = false;
