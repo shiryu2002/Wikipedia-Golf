@@ -33,6 +33,7 @@
 │   │   ├── Dialog.tsx         # モーダル / ボトムシート（フォーカストラップ, Esc, スクロールロック）
 │   │   ├── ConfirmDialog.tsx  # useConfirm(): window.confirm の Promise 版
 │   │   ├── Icons.tsx          # インライン SVG アイコン
+│   │   ├── Reveal.tsx         # 画面に入ったら下からフェードイン（IntersectionObserver）
 │   │   ├── Spinner.tsx        # ローディング表示
 │   │   └── ThemeToggle.tsx    # テーマ切替 + 初期化スクリプト
 │   ├── game/                  # ゲーム画面の部品
@@ -43,7 +44,7 @@
 │   │   ├── DailyCard.tsx      # 今日のお題カード
 │   │   ├── HintsPanel.tsx     # ヒント（ゴールのリンク元）一覧 + 絞り込み
 │   │   ├── ArticleView.tsx    # 記事本文の表示（マストヘッド, 状態表示）
-│   │   ├── HoleInCelebration.tsx  # ゴール時の「ホールイン」演出（グリーン, ボール, 打数スタンプ）
+│   │   ├── HoleInCelebration.tsx  # ゴール時の「ホールイン」演出（PC: グリーン俯瞰, スマホ: 全面芝生の縦レイアウト）
 │   │   └── MobileDock.tsx     # モバイル用ボトムドック
 │   └── home/
 │       ├── HoleBoard.tsx      # TOP の主役: 今日のお題 / ランダム / カスタムをタブで切り替えるコース図
@@ -78,7 +79,7 @@
 
 ## 主要モジュールの役割
 
-- `pages/game/index.tsx`: ゲーム本体。Wikipedia API から開始記事・目標記事を取得し、履歴・打数・ヒントなどの状態を管理。ゴール到達時には `ShareModal` を表示。ブラウザの戻るボタンはプレイ中のみ確認ダイアログでガード。
+- `pages/game/index.tsx`: ゲーム本体。Wikipedia API から開始記事・目標記事を取得し、履歴・打数・ヒントなどの状態を管理。ゴール到達時は `HoleInCelebration`（ホールイン演出、タップでスキップ可）→ `ShareModal` の順に表示。ブラウザの戻るボタンはプレイ中のみ確認ダイアログでガード。
 - `pages/index.tsx`: タイトル画面。ページの主役は `HoleBoard`（ティー → フェアウェイ → カップのコース図）。タブで今日のお題 / ランダム / カスタムを切り替え、カスタムの入力欄もボード上に置く。下に遊び方の3ステップ。
 - `components/Share.tsx`: クリア時の結果ダイアログ。X 共有、共有テキスト・ルートのコピー、タイトルへ戻る、同じお題でもう一度。
 - `components/game/*`: ゲーム画面をデスクトップ（サイドバー）とモバイル（ボトムドック + シート）の両方で組み立てるための部品。同じコンポーネントを `frame="panel" | "bare"` で使い分ける。

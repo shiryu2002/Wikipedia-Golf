@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 
-import { Confetti } from "@/components/Confetti";
 import { ShareModal } from "@/components/Share";
 import { ArticleView } from "@/components/game/ArticleView";
 import { DailyCard } from "@/components/game/DailyCard";
 import { GoalCard } from "@/components/game/GoalCard";
+import { HoleInCelebration } from "@/components/game/HoleInCelebration";
 import { HintsPanel } from "@/components/game/HintsPanel";
 import { MobileDock, type DockSheet } from "@/components/game/MobileDock";
 import { RouteTimeline } from "@/components/game/RouteTimeline";
@@ -27,6 +27,7 @@ import {
   TrophyIcon,
 } from "@/components/ui/Icons";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { formatTime } from "@/utils/time";
 import { loadArticle, loadGoalBacklinks } from "@/useCase/articleCache";
 import { type DailyChallenge } from "@/useCase/dailyChallenge";
 import {
@@ -78,6 +79,8 @@ export default function GamePage() {
   const [activeMode, setActiveMode] = useState<StartMode | null>(null);
   const [activeSheet, setActiveSheet] = useState<DockSheet | null>(null);
   const [isResultDismissed, setIsResultDismissed] = useState(false);
+  /** The hole-in animation plays between reaching the goal and the result dialog. */
+  const [isCelebrating, setIsCelebrating] = useState(false);
   const ignoreNextContentRef = useRef(false);
   const gameStateRef = useRef(gameState);
   const leavingRef = useRef(false);
@@ -277,6 +280,7 @@ export default function GamePage() {
     if (title === goal) {
       setGameState("gameover");
       setIsResultDismissed(false);
+      setIsCelebrating(true);
       setActiveSheet(null);
       // Stop timer when goal is reached
       if (isTimeAttackMode && startTime !== null) {
@@ -427,6 +431,7 @@ export default function GamePage() {
     }
     setActiveSheet(null);
     setIsResultDismissed(false);
+    setIsCelebrating(false);
     setGameState("idle");
     setHintModal(false);
     setStroke(-1);
@@ -950,8 +955,18 @@ export default function GamePage() {
         </div>
       </Dialog>
 
+      {gameState === "gameover" && isCelebrating && (
+        <HoleInCelebration
+          strokes={stroke}
+          startTitle={history[0]?.title ?? title}
+          goalTitle={goal}
+          hops={history.slice(1, -1).map((entry) => entry.title)}
+          timeLabel={isTimeAttackMode ? `${formatTime(elapsedTime)}秒` : undefined}
+          onComplete={() => setIsCelebrating(false)}
+        />
+      )}
       <ShareModal
-        open={gameState === "gameover" && !isResultDismissed}
+        open={gameState === "gameover" && !isResultDismissed && !isCelebrating}
         stroke={stroke}
         history={history}
         goal={goal}
@@ -967,7 +982,6 @@ export default function GamePage() {
         onReplay={handleReplay}
       />
       {confirmDialog}
-      <Confetti active={gameState === "gameover"} />
     </div>
   );
 }

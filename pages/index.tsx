@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { BrandMark, Wordmark } from "@/components/Brand";
 import { HoleBoard } from "@/components/home/HoleBoard";
+import { Reveal } from "@/components/ui/Reveal";
 import { prefetchHole } from "@/useCase/articleCache";
 import { CalendarIcon, GitHubIcon, RouteIcon, ShareIcon } from "@/components/ui/Icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -105,13 +106,16 @@ export default function Home() {
           <HoleBoard challenge={dailyChallenge} isLoading={isDailyChallengeLoading} />
         </div>
 
+        <Reveal>
         <SectionHeading id="about" title="Wikipediaゴルフとは？" />
         <p className="mt-6 max-w-3xl text-[15px] leading-[1.9] text-ink-2 sm:text-base">
           Wikipedia の記事を「コース」に見立てた、リンクたどりゲームです。スタート記事からリンクだけを踏んで、
           ゴール記事に着くまでのクリック数が「打数」。ゴルフと同じで、少ないほど良いスコアです。
           お題は毎日0時に入れ替わり、その日は誰が挑んでも同じホール。ランダムなお題や、自分で決めたお題でも遊べます。
         </p>
+        </Reveal>
 
+        <Reveal>
         <SectionHeading id="how-to-play" title="遊び方" />
         <ol className="mt-8 grid gap-x-8 gap-y-8 md:grid-cols-3">
           {[
@@ -151,7 +155,9 @@ export default function Home() {
             </li>
           ))}
         </ol>
+        </Reveal>
 
+        <Reveal>
         <SectionHeading id="rules" title="ルール" />
         <dl className="mt-8 grid gap-x-10 gap-y-7 md:grid-cols-2">
           {[
@@ -186,6 +192,7 @@ export default function Home() {
             </div>
           ))}
         </dl>
+        </Reveal>
       </main>
 
       <footer className="border-t border-rule">

@@ -167,6 +167,17 @@ button,
   display: none;
 }
 
+/* Scroll-triggered reveal (components/ui/Reveal.tsx) */
+[data-reveal="pending"] {
+  opacity: 0;
+  transform: translateY(18px);
+}
+[data-reveal="shown"] {
+  opacity: 1;
+  transform: none;
+  transition: opacity 300ms ease-out, transform 300ms ease-out;
+}
+
 /* Safe-area padding for the mobile dock */
 .pb-safe {
   padding-bottom: env(safe-area-inset-bottom, 0px);
