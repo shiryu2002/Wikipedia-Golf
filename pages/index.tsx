@@ -13,6 +13,15 @@ import {
   readCachedDailyChallenge,
 } from "@/useCase/dailyChallengeCache";
 
+const SectionHeading = ({ id, title }: { id: string; title: string }) => (
+  <div className="mt-20 flex items-baseline gap-4">
+    <h2 id={id} className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
+      {title}
+    </h2>
+    <span className="h-px flex-1 bg-rule" aria-hidden />
+  </div>
+);
+
 export default function Home() {
   const [dailyChallenge, setDailyChallenge] = useState<DailyChallenge | null>(null);
   const [isDailyChallengeLoading, setIsDailyChallengeLoading] = useState(false);
@@ -89,57 +98,87 @@ export default function Home() {
           <HoleBoard challenge={dailyChallenge} isLoading={isDailyChallengeLoading} />
         </div>
 
-        <p className="mt-4 text-[12px] leading-relaxed text-ink-3">
-          ローカルルール — 検索と URL の直打ちは禁止。ゴール記事は「閲覧のみ」で下見できる。1手戻しはタイムアタック以外で可。
+        <SectionHeading id="about" title="Wikipediaゴルフとは？" />
+        <p className="mt-6 max-w-3xl text-[15px] leading-[1.9] text-ink-2 sm:text-base">
+          Wikipedia の記事を「コース」に見立てた、リンクたどりゲームです。スタート記事からリンクだけを踏んで、
+          ゴール記事に着くまでのクリック数が「打数」。ゴルフと同じで、少ないほど良いスコアです。
+          お題は毎日0時に入れ替わり、その日は誰が挑んでも同じホール。ランダムなお題や、自分で決めたお題でも遊べます。
         </p>
 
-        {/* How to play */}
-        <section className="mt-20" aria-labelledby="how-to-play">
-          <div className="flex items-baseline gap-4">
-            <h2 id="how-to-play" className="font-display text-2xl font-bold tracking-tight sm:text-3xl">
-              遊び方
-            </h2>
-            <span className="h-px flex-1 bg-rule" aria-hidden />
-          </div>
-          <ol className="mt-8 grid gap-x-8 gap-y-8 md:grid-cols-3">
-            {[
-              {
-                step: "01",
-                title: "ティーオフ",
-                body: "上のボードでホールを選んでスタート。スタート記事がそのままコースになる。",
-                icon: <CalendarIcon size={18} />,
-              },
-              {
-                step: "02",
-                title: "リンクを踏む",
-                body: "記事の中のリンクをクリックして次の記事へ。1クリックが1打。ゴール記事は下見できるが、そこからは進めない。",
-                icon: <RouteIcon size={18} />,
-              },
-              {
-                step: "03",
-                title: "ホールアウト",
-                body: "ゴール記事に着いたら終わり。打数と辿ったルートを X やテキストで残して、友だちの打数と並べる。",
-                icon: <ShareIcon size={18} />,
-              },
-            ].map((item) => (
-              <li key={item.step} className="flex gap-4">
-                <span
-                  className="tabular shrink-0 font-numeral text-4xl font-semibold leading-none text-rule-2"
-                  style={{ fontVariationSettings: '"opsz" 96' }}
-                >
-                  {item.step}
-                </span>
-                <div className="min-w-0 border-t border-rule pt-1">
-                  <h3 className="flex items-center gap-2 font-display text-lg font-bold">
-                    <span className="text-green">{item.icon}</span>
-                    {item.title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-ink-2">{item.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <SectionHeading id="how-to-play" title="遊び方" />
+        <ol className="mt-8 grid gap-x-8 gap-y-8 md:grid-cols-3">
+          {[
+            {
+              step: "01",
+              title: "ティーオフ",
+              body: "上のボードでホールを選んでスタート。スタート記事が開きます。",
+              icon: <CalendarIcon size={18} />,
+            },
+            {
+              step: "02",
+              title: "リンクを踏む",
+              body: "記事の中のリンクをクリックして、ゴール記事に近づいていきます。",
+              icon: <RouteIcon size={18} />,
+            },
+            {
+              step: "03",
+              title: "ホールアウト",
+              body: "ゴール記事に着いたら終わり。打数と辿ったルートを X やテキストで残して、友だちと比べましょう。",
+              icon: <ShareIcon size={18} />,
+            },
+          ].map((item) => (
+            <li key={item.step} className="flex gap-4">
+              <span
+                className="tabular shrink-0 font-numeral text-4xl font-semibold leading-none text-rule-2"
+                style={{ fontVariationSettings: '"opsz" 96' }}
+              >
+                {item.step}
+              </span>
+              <div className="min-w-0 border-t border-rule pt-1">
+                <h3 className="flex items-center gap-2 font-display text-lg font-bold">
+                  <span className="text-green">{item.icon}</span>
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-ink-2">{item.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <SectionHeading id="rules" title="ルール" />
+        <dl className="mt-8 grid gap-x-10 gap-y-7 md:grid-cols-2">
+          {[
+            {
+              term: "打数",
+              body: "1クリックが1打。ゴール記事を開いた時点の打数がスコアで、少ないほど良い。",
+            },
+            {
+              term: "進み方",
+              body: "記事の中のリンクだけで進む。検索と URL の直打ちは禁止。",
+            },
+            {
+              term: "ゴール記事の下見",
+              body: "ゴール記事はいつでも「閲覧のみ」で開ける。ただし、そこからリンクを踏んで進むことはできない。",
+            },
+            {
+              term: "1手戻し",
+              body: "直前の記事に戻り、打数も1つ戻る。タイムアタック中は使えない。",
+            },
+            {
+              term: "タイムアタック",
+              body: "今日のお題で選べるモード。打数に加えて、ゴールまでのタイムも記録する。",
+            },
+            {
+              term: "ヒント",
+              body: "ゴール記事にリンクしている記事の一覧を見られる。その記事に着けば、あと1打でゴール。",
+            },
+          ].map((rule) => (
+            <div key={rule.term} className="border-t border-rule pt-3">
+              <dt className="font-display text-lg font-bold">{rule.term}</dt>
+              <dd className="mt-1.5 text-sm leading-relaxed text-ink-2">{rule.body}</dd>
+            </div>
+          ))}
+        </dl>
       </main>
 
       <footer className="border-t border-rule">

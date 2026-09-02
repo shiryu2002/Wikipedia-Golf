@@ -1,7 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { useRouter } from "next/router";
 
-import { formatJaDate } from "@/components/game/DailyCard";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import {
   ArrowRightIcon,
@@ -210,12 +209,7 @@ export const HoleBoard = ({ challenge, isLoading }: HoleBoardProps) => {
             );
           })}
         </div>
-        <p className="tabular pb-3 pt-2 font-numeral text-sm font-medium tracking-wide text-ink-3">
-          {holeNumber}
-          {tab === "daily" && challenge?.date ? (
-            <span className="ml-3 font-sans text-xs text-ink-3">{formatJaDate(challenge.date)}</span>
-          ) : null}
-        </p>
+        <p className="tabular pb-3 pt-2 font-numeral text-sm font-medium tracking-wide text-ink-3">{holeNumber}</p>
       </div>
 
       {/* Course */}
