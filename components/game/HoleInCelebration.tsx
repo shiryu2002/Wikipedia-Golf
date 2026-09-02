@@ -31,6 +31,8 @@ type Layout = {
   ballR: number;
   labelFont: number;
   labelMaxChars: number;
+  /** How many hops get a title (the rest still get a dot). */
+  maxLabels: number;
   dotR: number;
 };
 
@@ -49,6 +51,7 @@ const DESKTOP: Layout = {
   ballR: 11,
   labelFont: 12,
   labelMaxChars: 9,
+  maxLabels: 6,
   dotR: 4.5,
 };
 
@@ -66,7 +69,8 @@ const MOBILE: Layout = {
   ],
   ballR: 13,
   labelFont: 15,
-  labelMaxChars: 11,
+  labelMaxChars: 9,
+  maxLabels: 12,
   dotR: 6,
 };
 
@@ -85,7 +89,6 @@ const ROLL_MS = 2100;
 const ROLL_DELAY_MS = 350;
 const DROP_MS = 420;
 const SETTLE_MS = 900;
-const MAX_LABELS = 6;
 
 /* ------------------------------------------------------------------ */
 /* Geometry helpers                                                      */
@@ -162,7 +165,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
   // Layout is decided once on mount (this only ever renders client-side).
   const [layout] = useState<Layout>(() => (isNarrow() ? MOBILE : DESKTOP));
   const arc = useMemo(() => buildArc(layout.path), [layout]);
-  const { cup, path, ballR, labelFont, labelMaxChars, dotR } = layout;
+  const { cup, path, ballR, labelFont, labelMaxChars, maxLabels, dotR } = layout;
   const tee = path[0];
 
   const [phase, setPhase] = useState<Phase>("idle");
@@ -187,11 +190,11 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
   const hopMarks = useMemo(() => {
     const count = hops.length;
     const labelled = new Set<number>();
-    if (count <= MAX_LABELS) {
+    if (count <= maxLabels) {
       hops.forEach((_, index) => labelled.add(index));
     } else {
-      for (let i = 0; i < MAX_LABELS; i += 1) {
-        labelled.add(Math.round((i * (count - 1)) / (MAX_LABELS - 1)));
+      for (let i = 0; i < maxLabels; i += 1) {
+        labelled.add(Math.round((i * (count - 1)) / (maxLabels - 1)));
       }
     }
     let labelIndex = 0;
@@ -206,7 +209,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       const vertical = Math.abs(after.y - before.y) > Math.abs(after.x - before.x);
       return { title, t, point: arc.at(t), alt, showLabel, vertical };
     });
-  }, [hops, arc]);
+  }, [hops, arc, maxLabels]);
 
   useEffect(() => {
     if (reduceMotion) {
@@ -400,11 +403,15 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
           const chipW = chipWidth(label, labelFont);
           const chipH = labelFont * 1.85;
           const gap = mobile ? 10 : 6;
-          const tx = mark.vertical
+          // Sideways stretches: centre the chip over/under its dot so it doesn't
+          // reach into the path ahead.
+          const rawTx = mark.vertical
             ? mark.alt
               ? mark.point.x + dotR + gap
               : mark.point.x - dotR - gap - chipW
-            : mark.point.x + dotR + 4;
+            : mark.point.x - chipW / 2;
+          // Keep chips inside the visible scene.
+          const tx = Math.min(Math.max(rawTx, 18), vw - 18 - chipW);
           const ty = mark.vertical
             ? mark.point.y - chipH / 2
             : mark.alt

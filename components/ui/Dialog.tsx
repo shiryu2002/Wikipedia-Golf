@@ -195,7 +195,7 @@ export const Dialog = ({
           {children}
         </div>
         {footer ? (
-          <div className="pb-safe border-t border-rule bg-paper-2 px-6 py-4 sm:px-7">{footer}</div>
+          <div className="border-t border-rule bg-paper-2 px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:px-7">{footer}</div>
         ) : (
           <div className="pb-safe" />
         )}
