@@ -45,7 +45,8 @@
 │   │   ├── ArticleView.tsx    # 記事本文の表示（マストヘッド, 状態表示）
 │   │   └── MobileDock.tsx     # モバイル用ボトムドック
 │   └── home/
-│       └── CustomChallengeDialog.tsx  # カスタムお題フォーム（サジェスト付き）
+│       ├── HoleBoard.tsx      # TOP の主役: 今日のお題 / ランダム / カスタムをタブで切り替えるコース図
+│       └── ArticleField.tsx   # 記事名入力（Wikipedia prefixsearch サジェスト付き）
 ├── hooks/
 │   ├── useArticleSuggestions.ts       # Wikipedia prefixsearch のデバウンス取得
 │   └── useCopyToClipboard.ts          # コピー + 一時的な完了表示
@@ -74,7 +75,7 @@
 ## 主要モジュールの役割
 
 - `pages/game/index.tsx`: ゲーム本体。Wikipedia API から開始記事・目標記事を取得し、履歴・打数・ヒントなどの状態を管理。ゴール到達時には `ShareModal` を表示。ブラウザの戻るボタンはプレイ中のみ確認ダイアログでガード。
-- `pages/index.tsx`: タイトル画面。今日のお題チケット、モード切替（タイムアタック / ヒント）、ランダム・カスタムの導線、遊び方を表示。
+- `pages/index.tsx`: タイトル画面。ページの主役は `HoleBoard`（ティー → フェアウェイ → カップのコース図）。タブで今日のお題 / ランダム / カスタムを切り替え、カスタムの入力欄もボード上に置く。下に遊び方の3ステップ。
 - `components/Share.tsx`: クリア時の結果ダイアログ。X 共有、共有テキスト・ルートのコピー、タイトルへ戻る、同じお題でもう一度。
 - `components/game/*`: ゲーム画面をデスクトップ（サイドバー）とモバイル（ボトムドック + シート）の両方で組み立てるための部品。同じコンポーネントを `frame="panel" | "bare"` で使い分ける。
 - `useCase/referer.ts`: Wikipedia API の backlinks エンドポイントを利用して、目標記事へのリンク元数とタイトル一覧を取得するドメインロジック。
