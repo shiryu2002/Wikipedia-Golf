@@ -57,6 +57,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
   const [progress, setProgress] = useState(0);
   const [trail, setTrail] = useState<Point[]>([]);
   const ballRef = useRef<SVGGElement>(null);
+  const skipRef = useRef<(() => void) | null>(null);
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
@@ -96,6 +97,17 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
     const timers: number[] = [];
     const points: Point[] = [];
 
+    // Tap to skip: jump straight to the landed state.
+    skipRef.current = () => {
+      cancelAnimationFrame(frame);
+      timers.forEach((id) => window.clearTimeout(id));
+      timers.length = 0;
+      skipRef.current = null;
+      setProgress(1);
+      setPhase("done");
+      timers.push(window.setTimeout(() => onCompleteRef.current?.(), 350));
+    };
+
     const tick = (now: number) => {
       if (!start) start = now;
       const raw = Math.min(1, (now - start) / ROLL_MS);
@@ -115,7 +127,12 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
       } else {
         setPhase("dropped");
         timers.push(window.setTimeout(() => setPhase("done"), DROP_MS));
-        timers.push(window.setTimeout(() => onCompleteRef.current?.(), DROP_MS + SETTLE_MS + 900));
+        timers.push(
+          window.setTimeout(() => {
+            skipRef.current = null;
+            onCompleteRef.current?.();
+          }, DROP_MS + SETTLE_MS + 900),
+        );
       }
     };
 
@@ -129,6 +146,7 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
     return () => {
       cancelAnimationFrame(frame);
       timers.forEach((id) => window.clearTimeout(id));
+      skipRef.current = null;
     };
   }, [reduceMotion]);
 
@@ -136,7 +154,12 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
   const showNumeral = phase === "done";
 
   return (
-    <div className="fixed inset-0 z-[150] flex flex-col items-center justify-center overflow-hidden bg-ink/75 px-4 backdrop-blur-[3px]" aria-live="polite">
+    <div
+      className="fixed inset-0 z-[150] flex flex-col items-center justify-center overflow-hidden bg-ink/75 px-4 backdrop-blur-[3px]"
+      aria-live="polite"
+      onClick={() => skipRef.current?.()}
+      role="presentation"
+    >
       <Confetti active={landed} />
 
       <div className="relative w-[min(88vw,26rem)] animate-scale-in">
@@ -258,6 +281,12 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
           </>
         ) : null}
       </div>
+
+      {!showNumeral && phase !== "idle" && (
+        <p className="pointer-events-none absolute bottom-6 text-[11px] tracking-[0.25em] text-paper-2/45 animate-fade-in [animation-delay:800ms]">
+          タップでスキップ
+        </p>
+      )}
     </div>
   );
 };

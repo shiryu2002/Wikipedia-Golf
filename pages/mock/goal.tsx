@@ -20,7 +20,7 @@ export default function GoalMock() {
   const [strokes, setStrokes] = useState(3);
   const [timeAttack, setTimeAttack] = useState(false);
   const [run, setRun] = useState(1);
-  const [stage, setStage] = useState<"celebration" | "result" | "idle">("celebration");
+  const [stage, setStage] = useState<"celebration" | "result" | "idle">("idle");
 
   const route = useMemo(() => {
     const n = Math.min(strokes, SAMPLE_ROUTE.length - 1);
@@ -56,7 +56,7 @@ export default function GoalMock() {
         <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-green">Mock</p>
         <h1 className="mt-2 font-display text-3xl font-bold">ゴール演出のプレビュー</h1>
         <p className="mt-2 max-w-xl text-sm text-ink-2">
-          打数を選んで「再生」を押すと、ホールインの演出 → 結果ダイアログの順に流れます。ダイアログの「記事を見る」で閉じられます。
+          打数を選んで「再生」を押すと、ホールインの演出 → 結果ダイアログの順に流れます。演出中は画面をタップするとスキップ、ダイアログは「記事を見る」で閉じられます。
         </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-3">
