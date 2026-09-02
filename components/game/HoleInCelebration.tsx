@@ -123,12 +123,28 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
     [],
   );
 
-  // Positions along the path where the hop labels light up.
+  // Every hop gets a dot along the path; at most MAX_LABELS of them get a
+  // title (evenly sampled, always including the first and last hop) so the
+  // scene stays legible on long holes.
   const hopMarks = useMemo(() => {
-    const visible = hops.slice(0, 6);
-    return visible.map((title, index) => {
-      const t = (index + 1) / (visible.length + 1);
-      return { title, t, point: pointAtFraction(t), side: index % 2 === 0 ? ("right" as const) : ("left" as const) };
+    const MAX_LABELS = 6;
+    const count = hops.length;
+    const labelled = new Set<number>();
+    if (count <= MAX_LABELS) {
+      hops.forEach((_, index) => labelled.add(index));
+    } else {
+      for (let i = 0; i < MAX_LABELS; i += 1) {
+        labelled.add(Math.round((i * (count - 1)) / (MAX_LABELS - 1)));
+      }
+    }
+    let labelIndex = 0;
+    return hops.map((title, index) => {
+      const t = (index + 1) / (count + 1);
+      const showLabel = labelled.has(index);
+      // Alternate above/below the dot: the path runs mostly sideways, so
+      // vertical staggering keeps neighbouring labels apart.
+      const side = showLabel ? (labelIndex++ % 2 === 0 ? ("above" as const) : ("below" as const)) : ("above" as const);
+      return { title, t, point: pointAtFraction(t), side, showLabel };
     });
   }, [hops]);
 
@@ -278,21 +294,19 @@ export const HoleInCelebration = ({ strokes, startTitle, goalTitle, hops = [], o
           ))}
 
           {/* hop labels */}
-          {hopMarks.map((mark) => {
+          {hopMarks.map((mark, index) => {
             const lit = progress >= mark.t;
             return (
-              <g key={mark.title} opacity={lit ? 1 : 0} style={{ transition: "opacity 320ms ease" }}>
-                <circle cx={mark.point.x} cy={mark.point.y} r="4.5" fill="#F7F3EA" stroke="#1B1A17" strokeWidth="1.5" />
-                <g
-                  transform={`translate(${
-                    mark.side === "right" ? mark.point.x + 9 : mark.point.x - 9 - chipWidth(clip(mark.title, 9), 10.5)
-                  } ${mark.point.y - 9})`}
-                >
-                  <rect x="0" y="-11" rx="6" ry="6" width={chipWidth(clip(mark.title, 9), 10.5)} height="20" fill="#F7F3EA" opacity="0.94" />
-                  <text x="8" y="3.5" fontSize="10.5" fontWeight="600" fill="#1B1A17" fontFamily="var(--font-sans)">
-                    {clip(mark.title, 9)}
-                  </text>
-                </g>
+              <g key={`${index}-${mark.title}`} opacity={lit ? 1 : 0} style={{ transition: "opacity 320ms ease" }}>
+                <circle cx={mark.point.x} cy={mark.point.y} r={mark.showLabel ? 4.5 : 3.5} fill="#F7F3EA" stroke="#1B1A17" strokeWidth="1.5" />
+                {mark.showLabel && (
+                  <g transform={`translate(${mark.point.x + 8} ${mark.side === "above" ? mark.point.y - 30 : mark.point.y + 9})`}>
+                    <rect x="0" y="0" rx="6" ry="6" width={chipWidth(clip(mark.title, 9), 10.5)} height="20" fill="#F7F3EA" opacity="0.94" />
+                    <text x="8" y="14.5" fontSize="10.5" fontWeight="600" fill="#1B1A17" fontFamily="var(--font-sans)">
+                      {clip(mark.title, 9)}
+                    </text>
+                  </g>
+                )}
               </g>
             );
           })}
