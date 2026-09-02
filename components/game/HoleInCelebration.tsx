@@ -19,12 +19,12 @@ type HoleInCelebrationProps = {
 /* Scene geometry (SVG user units, viewBox 0 0 400 400) */
 const GREEN = { cx: 200, cy: 212, r: 148 };
 const CUP: Point = { x: 218, y: 172 };
-const TEE: Point = { x: 46, y: 368 };
-/** A long S across the green: up the left side, sweep right, curl into the cup. */
+/** The ball enters from just outside the bottom-left and sweeps in from the lower right. */
+const TEE: Point = { x: -30, y: 405 };
 const PATH: [Point, Point, Point, Point] = [
   TEE,
-  { x: 70, y: 235 },
-  { x: 340, y: 330 },
+  { x: 110, y: 430 },
+  { x: 330, y: 300 },
   CUP,
 ];
 
