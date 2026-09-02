@@ -199,8 +199,10 @@ export const Dialog = ({
             ) : null}
           </div>
         )}
-        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-7">
-          {children}
+        <div className={`scroll-thin min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-7 ${isFull ? "flex flex-col" : ""}`}>
+          {/* Full-screen on phones: centre the content vertically while it fits; auto
+              margins collapse to 0 once it overflows, so scrolling still starts at the top. */}
+          <div className={isFull ? "my-auto sm:my-0" : undefined}>{children}</div>
         </div>
         {footer ? (
           <div className="border-t border-rule bg-paper-2 px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:px-7">{footer}</div>
