@@ -708,7 +708,7 @@ export default function GamePage() {
     setActiveSheet(null);
   };
 
-  const pageTitle = goal ? `${headerGoalTitle} へ — Wikipedia Golf` : "プレイ — Wikipedia Golf";
+  const pageTitle = "プレイ中 - Wikipedia Golf";
 
   return (
     <div className="min-h-screen bg-paper text-ink">
