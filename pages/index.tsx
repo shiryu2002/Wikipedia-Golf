@@ -76,7 +76,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-paper text-ink">
       <Head>
-        <title>Wikipedia Golf — リンクだけで、ゴールの記事へ</title>
+        <title>Wikipedia Golf</title>
       </Head>
 
       <header className="sticky top-0 z-30 border-b border-rule/70 bg-paper/85 backdrop-blur-md">
