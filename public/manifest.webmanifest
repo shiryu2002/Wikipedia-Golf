@@ -1,0 +1,66 @@
+{
+  "id": "/",
+  "name": "Wikipedia Golf",
+  "short_name": "Wiki Golf",
+  "description": "スタート記事からリンクだけを辿って、最少の打数でゴール記事へ。毎日更新される「今日のお題」で友だちと競おう。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F7F3EA",
+  "theme_color": "#F7F3EA",
+  "categories": [
+    "games",
+    "education"
+  ],
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "今日のお題をプレイ",
+      "short_name": "今日のお題",
+      "description": "毎日0時（JST）に切り替わるお題に挑戦",
+      "url": "/game?start=daily&source=pwa",
+      "icons": [
+        {
+          "src": "/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "ランダムでプレイ",
+      "short_name": "ランダム",
+      "description": "ランダムなスタートとゴールで1ホール",
+      "url": "/game?start=random&source=pwa",
+      "icons": [
+        {
+          "src": "/icon-512.png",
+          "sizes": "512x512",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}
