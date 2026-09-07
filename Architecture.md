@@ -51,17 +51,22 @@
 │       └── ArticleField.tsx   # 記事名入力（Wikipedia prefixsearch サジェスト付き）
 ├── hooks/
 │   ├── useArticleSuggestions.ts       # Wikipedia prefixsearch のデバウンス取得
-│   └── useCopyToClipboard.ts          # コピー + 一時的な完了表示
+│   ├── useCopyToClipboard.ts          # コピー + 一時的な完了表示
+│   └── useServiceWorker.ts            # 本番ビルドでのみ /sw.js を登録
 ├── pages/
 │   ├── _app.tsx               # フォント読み込み, 共通 <Head>
 │   ├── _document.tsx          # lang=ja, テーマ初期化スクリプト
 │   ├── index.tsx              # タイトル / ランディング
 │   ├── game/index.tsx         # ゲーム本体
 │   ├── 404.tsx
+│   ├── offline.tsx            # オフライン時に Service Worker が案内するページ
 │   ├── mock/goal.tsx          # ゴール演出のプレビュー（アプリからはリンクしない）
 │   └── iframe/index.tsx       # iframe 埋め込みの検証用 UI
 ├── public/
-│   └── daily-pool.json        # 良質/秀逸な記事の候補プール（不定期に再生成）
+│   ├── daily-pool.json        # 良質/秀逸な記事の候補プール（不定期に再生成）
+│   ├── manifest.webmanifest   # PWA マニフェスト（名前, アイコン, ショートカット）
+│   ├── sw.js                  # Service Worker（手書き, workbox 不使用）
+│   └── icon-maskable.svg      # ホーム画面用の maskable アイコン（全面塗り）
 ├── scripts/
 │   └── build-daily-pool.ts
 ├── styles/
@@ -105,6 +110,17 @@
 - **記事面**: Wikipedia の inline style は明るい背景を前提としているため、`--page-*` トークンでダークテーマでも記事面だけは「明るい紙」のまま保つ。
 - **テーマ**: `localStorage` の `wg-theme`、未設定時は OS 設定に従う。`_document.tsx` のインラインスクリプトで初回描画前に `data-theme` を付与。
 - **モーション**: `animate-fade-up` / `animate-scale-in` / `animate-sheet-up` / `animate-pop` を最小限に。`prefers-reduced-motion` で無効化。
+
+## PWA（ホーム画面への追加）
+
+- **マニフェスト**: `public/manifest.webmanifest`。`display: standalone`、紙色のテーマ/背景色、`any` と `maskable` のアイコン、「今日のお題」「ランダム」へのショートカットを定義。`_document.tsx` で `<link rel="manifest">` と iOS 向けの `apple-mobile-web-app-*` メタを出力。
+- **Service Worker**: `public/sw.js` を `hooks/useServiceWorker.ts` が本番ビルドでのみ登録（`next dev` では動かない）。依存を増やさないよう手書きで、キャッシュ戦略は次のとおり。
+  - ページ遷移: ネットワーク優先。失敗時はキャッシュ済みページ、なければ `/offline?from=<元のURL>` へリダイレクト（`/offline` に直接 HTML を返すと Next.js がハイドレーション時にルートを差し替えてしまうため）。
+  - `/_next/static/*`（ハッシュ付き）: キャッシュ優先。上限 200 件で古いものから削除。
+  - `daily-pool.json` やアイコンなど同一オリジンの静的ファイル: stale-while-revalidate。
+  - Wikipedia API などクロスオリジン: 介入しない。記事は常にライブで取得する。
+- **更新**: `sw.js` は `next.config.js` の headers で `max-age=0, must-revalidate`。`install` で `skipWaiting`、`activate` で `clients.claim` と旧バージョンのキャッシュ削除。キャッシュ戦略を変えたら `sw.js` の `VERSION` を上げる。
+- **アイコン**: `public/icon.svg` が原本。`any` 用は既存の `icon-512.png` と `icon.svg`、`maskable` 用は `icon-maskable.svg`（全面を紙色で塗り、マークを 80% のセーフゾーンに収めたもの）。
 
 ## 今後の拡張のヒント
 

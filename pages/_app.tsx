@@ -3,6 +3,8 @@ import type { AppProps } from "next/app";
 import Head from "next/head";
 import { Fraunces, Shippori_Mincho } from "next/font/google";
 
+import { useServiceWorker } from "@/hooks/useServiceWorker";
+
 const mincho = Shippori_Mincho({
   weight: ["500", "700"],
   subsets: ["latin"],
@@ -23,6 +25,8 @@ const DESCRIPTION =
   "スタート記事からリンクだけを辿って、最少の打数でゴール記事へ。毎日更新される「今日のお題」で友だちと競おう。";
 
 export default function App({ Component, pageProps }: AppProps) {
+  useServiceWorker();
+
   return (
     <>
       <Head>

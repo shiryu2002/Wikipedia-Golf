@@ -6,6 +6,11 @@ export default function Document() {
     <Html lang="ja">
       <Head>
         <meta name="application-name" content="Wikipedia Golf" />
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Wiki Golf" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F7F3EA" />
         <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151411" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
